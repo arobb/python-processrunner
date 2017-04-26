@@ -50,7 +50,7 @@ getLineFromPipe
     - Blocking
 
 getPopen
-  Obtain the underlying subprocess.Popen instance.
+  Obtain the underlying ``subprocess.Popen`` instance.
 
   *Parameters*
     - None
@@ -80,9 +80,9 @@ mapLines
   Run a function against each line presented by one pipe manager.
   Returns a reference to a ``dict`` that can be used to monitor the status of
   the function. When the process is dead, the queues are empty, and all lines
-  are processed, the dict will be updated. This can be used as a blocking
+  are processed, the dict will be updated (the value will be changed from ``False`` to ``True``). This can be used as a blocking
   mechanism by functions invoking mapLines.
-  Status dict format: {"complete":bool}
+  Status dict format: ``{"complete":bool}``
 
   *Parameters*
     - **func** REQUIRED ``function`` A function that takes one parameter, the line from the pipe and returns the line with any desired changes.
