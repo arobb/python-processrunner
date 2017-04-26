@@ -315,7 +315,7 @@ class ProcessRunner:
 
     # Retreive a pipe manager by name
     #
-    # @public
+    # @private
     # @throws KeyError
     # @param REQUIRED string procPipeName One of "stdout" or "stderr"
     # @returns object _PrPipe instance
