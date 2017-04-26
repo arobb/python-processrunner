@@ -25,7 +25,7 @@ currently alive. Takes no parameters.
 
 ProcessRunner class uses subprocess.Popen. It does not use the shell=True flag.
 All processes started by the class are saved in PROCESSRUNNER_PROCESSES. A list
-of currently active processes started by the class can be retreived by calling
+of currently active processes started by the class can be retrieved by calling
 getActiveProcesses(), which IS NOT a class member.
 Takes these parameters:
 - REQUIRED [string,] command The command to execute along with all parameters
