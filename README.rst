@@ -67,7 +67,7 @@ WriteOut
       - This can also be any object that can be cast to a string
 
 getActiveProcesses
-  The getActiveProcesses function returns a list of ProcessRunner instances that are currently alive.
+  The getActiveProcesses function returns a list of ``ProcessRunner`` instances that are currently alive.
 
   *Takes no parameters*
 
