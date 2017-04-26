@@ -1,85 +1,109 @@
-# Python ProcessRunner
-Designed to make reading from external processes easier. Does not permit interactive communication with the process, but rather provides simplified consumption of process output (especially for logging.)
+Python ProcessRunner
+====================
+Designed to make reading from external processes easier. Does not permit interactive communication with the process, but rather provides simplified (usually) consumption of process output (especially for logging.)
 
-## Provided classes
-ProcessRunner
+Output can be sent to multiple locations. E.g. the stdout and stderr of an external process can be written to one or multiple files, AND also to the local stdout and stderr of the local process.
 
-## Provided convenience functions
-runCommand
-ssh
-WriteOut
-getActiveProcesses
-
-## Exceptions
-CommandNotFound
+Several convenience functions simplify common use cases. All the classes and functions take the command to execute in the subprocess.Popen/.call format, a list of strings starting with the command name, followed by any arguments for that command.
 
 
-ssh function returns the SSH exit code. Takes the following parameters
-- REQUIRED string remoteAddress IP or hostname for target system
-- REQUIRED string remotecommand The command to run on the target system
-- OPTIONAL string outputPrefix String to prepend to all output lines. Defaults to 'ssh> '
+Provided classes
+================
+**ProcessRunner**
+The ProcessRunner class uses subprocess.Popen. It does not use the shell=True flag. All processes started by the class are saved in PROCESSRUNNER_PROCESSES. A list of currently active processes started by the class can be retrieved by calling getActiveProcesses(), which IS NOT a class member.
+*Takes these parameters*
+- **command** REQUIRED [string,] The command to execute along with all parameters
+- **cwd** OPTIONAL string Directory to switch into before execution. CWD does not apply to the _location_ of the process, which must be on PATH.
+
+ProcessRunner class methods
+---------------------------
+**getPopen**
+**getCommand**
+**getPipe**
+**which**
+**isQueueEmpty**
+**isAlive**
+**poll**
+**wait**
+**registerForClientQueue**
+**unRegisterClientQueue**
+**getLineFromPipe**
+**mapLines**
+**collectLines**
 
 
-WriteOut function returns a function that accepts a line and writes that line
-to the provided pipe, prepended with a user provided string. Useful when handling
-output from processes directly. See example use in the ssh function.
-Takes the following parameters
-- REQUIRED pipe pipe A system pipe to write the output to
-- REQUIRED string outputPrefix A string to prepend to each line
--- This can also be any object that can be cast to a string
+Provided convenience functions
+==============================
+**runCommand**
+The runCommand function returns the process exit code, and stdout and stderr are connected to local stdout and stderr.
+
+**ssh**
+The ssh function runs a command on a remote host, and returns the SSH exit code. stdout and stderr are connected to local stdout and stderr.
+*Takes these parameters*
+ - **remoteAddress** REQUIRED string IP or hostname for target system
+ - **remotecommand** REQUIRED string The command to run on the target system
+ - **outputPrefix** OPTIONAL string String to prepend to all output lines. Defaults to 'ssh> '
+
+**WriteOut**
+The WriteOut function is used to prepend lines from the external process with a given string. Given a pipe and a string, it returns a function that accepts a line of text, then writes that line to the provided pipe, prepended with a user provided string. Useful when handling output from processes directly. See example use below.
+*Takes these parameters*
+ - REQUIRED pipe pipe A system pipe to write the output to
+ - REQUIRED string outputPrefix A string to prepend to each line
+  - This can also be any object that can be cast to a string
+
+**getActiveProcesses**
+The getActiveProcesses function returns a list of ProcessRunner instances that are currently alive.
+*Takes no parameters*
 
 
-getActiveProcesses function returns a list of ProcessRunner instances that are
-currently alive. Takes no parameters.
+Exceptions
+----------
+**CommandNotFound**
+Exception thrown when the command to execute isn't available.
 
 
-ProcessRunner class uses subprocess.Popen. It does not use the shell=True flag.
-All processes started by the class are saved in PROCESSRUNNER_PROCESSES. A list
-of currently active processes started by the class can be retreived by calling
-getActiveProcesses(), which IS NOT a class member.
-Takes these parameters:
-- REQUIRED [string,] command The command to execute along with all parameters
-- OPTIONAL string cwd Directory to switch into before execution. CWD does not
-                      apply to the _location_ of the process, which must be on
-                      PATH
+Examples
+==============
 
+Simple
+------
+::
+  # Run a command, wait for it to complete, and gather its return code
+  command = ["scp", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "/path/to/local/file", clientAddress+":/tmp/"]
+  result = ProcessRunner(command).wait().poll()
 
-Simple example:
-# Run a command, wait for it to complete, and gather its return code
-command = ["scp", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "/path/to/local/file", clientAddress+":/tmp/"]
-result = ProcessRunner(command).wait().poll()
+Complex
+-------
+::
+  # Logging files
+  stdoutFile = open(workingDir+'/stdout.txt', 'a')
+  stderrFile = open(workingDir+'/stderr.txt', 'a')
 
+  # Date/time notation for output lines in files
+  class DateNote:
+      def init(self):
+          pass
+      def __repr__(self):
+          return datetime.now().isoformat() + " "
 
-Complex example:
-# Logging files
-stdoutFile = open(workingDir+'/stdout.txt', 'a')
-stderrFile = open(workingDir+'/stderr.txt', 'a')
+  # Start the process
+  proc = ProcessRunner(command)
 
-# Date/time notation for output lines in files
-class DateNote:
-    def init(self):
-        pass
-    def __repr__(self):
-        return datetime.now().isoformat() + " "
+  # Attach output mechanisms to the process's output pipes. These are handled asynchronously, so you can see the output while it is happening
+  # Write to the console's stdout and stderr, with custom prefixes for each
+  proc.mapLines(WriteOut(pipe=sys.stdout, outputPrefix="validation-stdout> "), procPipeName="stdout")
+  proc.mapLines(WriteOut(pipe=sys.stderr, outputPrefix="validation-stderr> "), procPipeName="stderr")
 
-# Start the process
-proc = ProcessRunner(command)
+  # Write to the log files, prepending each line with a date/time stamp
+  proc.mapLines(WriteOut(pipe=stdoutFile, outputPrefix=DateNote()), procPipeName="stdout")
+  proc.mapLines(WriteOut(pipe=stderrFile, outputPrefix=DateNote()), procPipeName="stderr")
 
-# Attach output mechanisms to the process's output pipes. These are handled asynchronously, so you can see the output while it is happening
-# Write to the console's stdout and stderr, with custom prefixes for each
-proc.mapLines(WriteOut(pipe=sys.stdout, outputPrefix="validation-stdout> "), procPipeName="stdout")
-proc.mapLines(WriteOut(pipe=sys.stderr, outputPrefix="validation-stderr> "), procPipeName="stderr")
+  # Block regular execution until the process finishes
+  result = proc.wait().poll()
 
-# Write to the log files, prepending each line with a date/time stamp
-proc.mapLines(WriteOut(pipe=stdoutFile, outputPrefix=DateNote()), procPipeName="stdout")
-proc.mapLines(WriteOut(pipe=stderrFile, outputPrefix=DateNote()), procPipeName="stderr")
+  # Wait until the queues are emptied to close the files
+  while not proc.areAllQueuesEmpty():
+      time.sleep(0.01)
 
-# Block regular execution until the process finishes
-result = proc.wait().poll()
-
-# Wait until the queues are emptied to close the files
-while not proc.areAllQueuesEmpty():
-    time.sleep(0.01)
-
-stdoutFile.close()
-stderrFile.close()
+  stdoutFile.close()
+  stderrFile.close()
