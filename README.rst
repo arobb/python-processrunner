@@ -9,7 +9,7 @@ Several convenience functions simplify common use cases. All the classes and fun
 
 Provided classes
 ================
-**ProcessRunner**
+ProcessRunner
   The ProcessRunner class uses subprocess.Popen. It does not use the shell=True flag. All processes started by the class are saved in PROCESSRUNNER_PROCESSES. A list of currently active processes started by the class can be retrieved by calling getActiveProcesses(), which IS NOT a class member.
 
   *Parameters*
@@ -47,10 +47,10 @@ ProcessRunner class methods
 
 Provided convenience functions
 ==============================
-**runCommand**
+runCommand
   The runCommand function returns the process exit code, and stdout and stderr are connected to local stdout and stderr.
 
-**ssh**
+ssh
   The ssh function runs a command on a remote host, and returns the SSH exit code. stdout and stderr are connected to local stdout and stderr.
 
   *Parameters*
@@ -58,7 +58,7 @@ Provided convenience functions
     - **remotecommand** REQUIRED string The command to run on the target system
     - **outputPrefix** OPTIONAL string String to prepend to all output lines. Defaults to 'ssh> '
 
-**WriteOut**
+WriteOut
   The WriteOut function is used to prepend lines from the external process with a given string. Given a pipe and a string, it returns a function that accepts a line of text, then writes that line to the provided pipe, prepended with a user provided string. Useful when handling output from processes directly. See example use below.
 
   *Parameters*
@@ -66,7 +66,7 @@ Provided convenience functions
     - **outputPrefix** REQUIRED string A string to prepend to each line
       - This can also be any object that can be cast to a string
 
-**getActiveProcesses**
+getActiveProcesses
   The getActiveProcesses function returns a list of ProcessRunner instances that are currently alive.
 
   *Takes no parameters*
@@ -74,7 +74,7 @@ Provided convenience functions
 
 Exceptions
 ----------
-**CommandNotFound**
+CommandNotFound
   Exception thrown when the command to execute isn't available.
 
 
