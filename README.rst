@@ -83,6 +83,7 @@ Examples
 
 Simple
 ------
+Use SCP to copy a local file to a remote host, using SSH key-based authentication.
 
 ::
 
@@ -92,6 +93,7 @@ Simple
 
 Complex
 -------
+Execute a command and while it runs write lines from the external process stdout and stderr to both the corresponding local pipes, as well as corresponding files.
 
 ::
 
