@@ -14,7 +14,7 @@ ProcessRunner
 
   *Parameters*
     - **command** REQUIRED ``[string,]`` The command to execute along with all parameters.
-    - **cwd** OPTIONAL ``string`` Directory to switch into before execution. CWD does not apply to the location of the process executable itself, which must be on PATH.
+    - **cwd** OPTIONAL ``string`` Directory to switch into before execution. CWD does not apply to the location of the process executable itself, which must be on PATH or called with an absolute path.
 
   *Properties*
     - Non-blocking: Returns immediately; the external process is managed in a new thread
