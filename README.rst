@@ -73,7 +73,7 @@ getActiveProcesses
 
 
 Exceptions
-----------
+==========
 CommandNotFound
   Exception thrown when the command to execute isn't available.
 
