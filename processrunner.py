@@ -165,13 +165,15 @@ def getActiveProcesses():
     return active
 
 
+MAX_QUEUE_LENGTH = 0
+
 # Custom pipe manager to capture the output of processes and store them in
 #   dedicated thread-safe queues. Readers register for their own queue.
 # @private
 # @param REQUIRED pipe pipeHandle Pipe to monitor for records
 class _PrPipe:
     def __init__(self, pipeHandle):
-        self.queue = Queue(300)
+        self.queue = Queue(MAX_QUEUE_LENGTH)
 
         self.thread = Thread(target=self.enqueue_output, kwargs={"out":pipeHandle})
         self.thread.daemon = True
@@ -242,7 +244,7 @@ class _PrPipe:
 
         try:
             self.clientQueuesLock.acquire()
-            self.clientQueues[str(clientId)] = Queue(300)
+            self.clientQueues[str(clientId)] = Queue(MAX_QUEUE_LENGTH)
         finally:
             self.clientQueuesLock.release()
 
