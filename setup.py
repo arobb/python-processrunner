@@ -22,7 +22,7 @@ setup(
 
     # Descriptions
     , description='Easily trigger and manage output from external processes.'
-    , long_description=''
+    , long_description=long_description
 
     # Project URL
     , url='https://github.com/arobb/python-processrunner'
