@@ -40,7 +40,9 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         command = [self.sampleCommandPath,"--lines",str(testLen),"--block","1","--sleep","0"]
         proc = ProcessRunner(command)
         output = proc.collectLines()
-        result = proc.wait().poll()
+        proc.wait()
+        result = proc.poll()
+        proc.terminate()
 
         length = len(output)
 

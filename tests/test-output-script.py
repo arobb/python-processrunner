@@ -21,6 +21,7 @@ class TestScript(object):
         parser = argparse.ArgumentParser(usage='%(prog)s [options]', description='')
         parser.add_argument('--lines', required=False, nargs='?', dest='lines', default='10', help='Number of lines to output. Defaults to 10')
         parser.add_argument('--block', required=False, nargs='?', dest='block', default='1', help='Number of lines to output between sleep. Defaults to 1')
+        parser.add_argument('--return-code', required=False, nargs='?', dest='return-code', default='0', help='Code to return at completion')
         parser.add_argument('--sleep', required=False, nargs='?', dest='sleep', default='0', help='Sleep')
         self.config = parser.parse_args().__dict__
 
@@ -35,7 +36,7 @@ class TestScript(object):
         self.stderr = WriteOut(pipe=sys.stderr, outputPrefix=DateNote())
 
         self.write(self.config['lines'])
-        exit(0)
+        exit(int(self.config['return-code']))
 
     def write(self, count):
         count = int(count)
