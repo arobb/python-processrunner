@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 # -*- coding: utf-8 -*-
 '''
 '''
@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime
 
+import tests.context
 from processrunner import ProcessRunner, WriteOut
 
 

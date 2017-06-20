@@ -6,7 +6,6 @@ import unittest
 
 # import context
 from processrunner import ProcessRunner
-from threading  import Thread
 
 '''
 # Watch the main queue fill and empty
