@@ -91,8 +91,8 @@ except ImportError:
     from queue import Empty # python 3.x
 
 
-# Exception in case the command to execute isn't available
 class CommandNotFound(OSError):
+    """Exception in case the command to execute isn't available"""
     def __init__(self, value, command):
         self.errno = 2
         self.value = value
@@ -103,17 +103,23 @@ class CommandNotFound(OSError):
 
 
 ON_POSIX = 'posix' in sys.builtin_module_names
-
-PROCESSRUNNER_PROCESSES = []
+PROCESSRUNNER_PROCESSES = [] # Holding list for instances of ProcessRunner
+MAX_QUEUE_LENGTH = 0 # Maximum length for Queues
 AUTHKEY = ''.join([random.choice('0123456789ABCDEF') for x in range(256)])
 
 
-# Easy invocation of a command with default IO streams
-#
-# @param REQUIRED [string,] command Array of strings to pass to subprocess.Popen
-# @param OPTIONAL string outputPrefix tring to prepend to all output lines. Defaults to 'ProcessRunner> '
-# @returns the command exit code
 def runCommand(command, outputPrefix="ProcessRunner> "):
+    """Easy invocation of a command with default IO streams
+
+    Args:
+        command (list): List of strings to pass to subprocess.Popen
+
+    Kwargs:
+        outputPrefix(str): String to prepend to all output lines. Defaults to 'ProcessRunner> '
+
+    Returns:
+        int The return code from the command
+    """
     proc = ProcessRunner(command)
     proc.mapLines(WriteOut(sys.stdout, outputPrefix=outputPrefix), procPipeName="stdout")
     proc.mapLines(WriteOut(sys.stderr, outputPrefix=outputPrefix), procPipeName="stderr")
@@ -122,13 +128,19 @@ def runCommand(command, outputPrefix="ProcessRunner> "):
     return proc.poll()
 
 
-# Easy invocation of SSH.
-#
-# @param REQUIRED string remoteAddress IP or hostname for target system
-# @param REQUIRED string remotecommand The command to run on the target system
-# @param OPTIONAL string outputPrefix String to prepend to all output lines. Defaults to 'ssh> '
-# @returns the SSH exit code (usually the exit code of the executed command)
 def ssh(remoteAddress, remoteCommand, outputPrefix="ssh> "):
+    """Easy invocation of SSH.
+
+    Args:
+        remoteAddress (string): IP or hostname for target system
+        remoteCommand (string): The command to run on the target system
+
+    Kwargs:
+        outputPrefix (string): String to prepend to all output lines. Defaults to 'ssh> '
+
+    Returns:
+        int. The SSH exit code (usually the exit code of the executed command)
+    """
     command = ["ssh", remoteAddress, "-t", "-o", "StrictHostKeyChecking=no", remoteCommand]
 
     proc = ProcessRunner(command)
@@ -139,12 +151,17 @@ def ssh(remoteAddress, remoteCommand, outputPrefix="ssh> "):
     return proc.poll()
 
 
-# Use with ProcessRunner.mapLines to easily write to your favorite pipe
-# or handle
-# @param REQUIRED pipe pipe A system pipe to write the output to
-# @param REQUIRED string outputPrefix A string to prepend to each line
-# @returns function
 def WriteOut(pipe, outputPrefix):
+    """Use with ProcessRunner.mapLines to easily write to your favorite pipe
+       or handle
+
+    Args:
+        pipe (pipe): A system pipe/file handle to write output to
+        outputPrefix (string): A string to prepend to each line
+
+    Returns:
+        function
+    """
     # TODO Validate the pipe somehow
 
     def func(line):
@@ -158,10 +175,12 @@ def WriteOut(pipe, outputPrefix):
     return func
 
 
-# Retrieve a list of running processes started by ProcessRunner
-#
-# @returns [ProcessRunner]
 def getActiveProcesses():
+    """Retrieve a list of running processes started by ProcessRunner
+
+    Returns:
+        list. List of ProcessRunner instances
+    """
     active = []
 
     for p in PROCESSRUNNER_PROCESSES:
@@ -171,14 +190,19 @@ def getActiveProcesses():
     return active
 
 
-MAX_QUEUE_LENGTH = 0
+# Private class only intended to be used by ProcessRunner
+class _PrPipe(object):
+    """Custom pipe manager to capture the output of processes and store them in
+       dedicated thread-safe queues.
 
-# Custom pipe manager to capture the output of processes and store them in
-#   dedicated thread-safe queues. Readers register for their own queue.
-# @private
-# @param REQUIRED pipe pipeHandle Pipe to monitor for records
-class _PrPipe:
+       Clients register their own queues.
+    """
+
     def __init__(self, pipeHandle):
+        """
+        Args:
+            pipeHandle (pipe): Pipe to monitor for records
+        """
         self.id = ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
 
         self.queue = JoinableQueue(MAX_QUEUE_LENGTH)
@@ -191,21 +215,35 @@ class _PrPipe:
         self.clientQueues = {}
         self.lastClientId = 0
 
+    # Class contains Locks and Queues which cannot be pickled
     def __getstate__(self):
+        """Prevent _PrPipe from being pickled across Processes
+
+        Raises:
+            Exception
+        """
         raise Exception("Don't pickle me!")
 
-    # Copy lines from a given pipe handle into a local threading.Queue
     def enqueue_output(self, out, queue):
+        """Copy lines from a given pipe handle into a local threading.Queue
+
+        Runs in a separate process, started by __init__
+
+        Args:
+            out (pipe): Pipe to read from
+            queue (Queue): Queue to write to
+        """
         for line in iter(out.readline, b''):
             queue.put(line)
         out.close()
 
-    # Push messages from the main queue to all client queues
-    # Must be triggered by an external mechanism (defaulting to
-    # a call of getLine)
-    #
-    # @returns None
     def publish(self):
+        """Push messages from the main queue to all client queues
+
+        Must be triggered by an external mechanism
+        Typically triggered by getLine or wait
+
+        """
         try:
             while not self.queue.empty():
 
@@ -219,18 +257,31 @@ class _PrPipe:
         except Empty:
             pass
 
-    # Retrieve a client's multiprocessing.Queue proxy object
-    #
-    # @returns <Proxy object>
     def getQueue(self, clientId):
+        """Retrieve a client's multiprocessing.Queue proxy object
+
+        Args:
+            clientId (string): ID of the client
+
+        Returns:
+            QueueProxy
+        """
         return self.clientQueues[str(clientId)]
 
-    # Checks whether the primary threading.Queue or any clients'
-    #   multiprocessing.Queues are empty.
-    # Returns True ONLY if ALL queues are empty
-    #
-    # @returns bool
     def isEmpty(self, clientId=None):
+        """Checks whether the primary threading.Queue or any clients'
+        multiprocessing.Queues are empty
+
+        Returns True ONLY if ALL queues are empty if clientId is None
+        Returns True ONLY if both main queue and specfied client queue are empty
+        when clientId is provided
+
+        Args:
+            clientId (string): ID of the client
+
+        Returns:
+            bool
+        """
         if clientId is not None:
             return self.queue.empty() \
                 and self.getQueue(clientId).empty()
@@ -244,56 +295,82 @@ class _PrPipe:
 
             return empty
 
-    # Check whether the thread managing the pipe > ThreadQueue movement
-    #   is still active
-    #
-    # @returns bool
     def is_alive(self):
+        """Check whether the thread managing the pipe > Queue movement
+        is still active
+
+        Returns:
+            bool
+        """
         return self.process.is_alive()
 
-    # Retrieve a line from a given client's multiprocessing.Queue
-    #
-    # @returns <element from Queue>
     def getLine(self, clientId):
+        """Retrieve a line from a given client's Queue
+
+        Args:
+            clientId (string): ID of the client
+
+        Returns:
+            <element from Queue>
+
+        Raises:
+            Empty
+        """
         # Pull any newer lines
         self.publish()
 
         # Throws Empty
-        line = self.clientQueues[str(clientId)].get_nowait()
-        self.clientQueues[str(clientId)].task_done()
+        q = self.getQueue(clientId)
+        line = q.get_nowait()
+        q.task_done()
+
         return line
 
-    # Attach an additional Queue proxy to this pipe
-    # All elements published() after this will be added to this Queue
-    # Returns the clientId for the new client, which must be used in all
-    #   future interaction with this pipe
-    #
-    # @returns string
     def registerClientQueue(self, queueProxy):
+        """Attach an additional Queue proxy to this _PrPipe
+
+        All elements published() from now on will also be added to this Queue
+        Returns the clientId for the new client, which must be used in all
+        future interaction with this _PrPipe
+
+        Args:
+            queueProxy (QueueProxy): Proxy object to a Queue we should populate
+
+        Returns:
+            string. The client's ID for acccess to this queue
+
+        """
+        # Make sure we don't re-use a clientId
         clientId = self.lastClientId + 1
         self.lastClientId = clientId
 
         with self.clientQueuesLock:
-            # self.clientIdList.append(str(clientId))
             self.clientQueues[str(clientId)] = queueProxy
 
         return str(clientId)
 
-    # Detach a Queue proxy from this pipe
-    # Returns the clientId that was removed
-    #
-    # @returns string
     def unRegisterClientQueue(self, clientId):
+        """Detach a Queue proxy from this _PrPipe
+
+        Returns the clientId that was removed
+
+        Args:
+            clientId (string): ID of the client
+
+        Returns:
+            string. ID of the client queue
+
+        """
         with self.clientQueuesLock:
             self.clientQueues.pop(clientId)
 
         return str(clientId)
 
-    # Print a line from each client Queue attached to this pipe
-    # This is a destructive operation, as it *removes* the line from the Queue
-    #
-    # @returns None
     def destructiveAudit(self):
+        """Print a line from each client Queue attached to this _PrPipe
+
+        This is a destructive operation, as it *removes* a line from each Queue
+        """
         with self.clientQueuesLock:
             for clientId in self.clientQueues.iterkeys():
                 try:
@@ -302,9 +379,24 @@ class _PrPipe:
                     print "clientId " + str(clientId) + " is empty"
 
 
+# Private class only intended to be used by ProcessRunner
 class _Command(object):
+    """Custom wrapper for Popen that manages the interaction with Popen and any
+    client objects that have requested output
+
+    Runs in a separate process and is managed via multiprocessing.BaseManager,
+    which provides proxy access to class methods
+
+    """
 
     def __init__(self, command, cwd=None):
+        """
+        Args:
+            command (list): List of strings to pass to subprocess.Popen
+
+        Kwargs:
+            cwd (string): Directory to change to before execution. Passed to subprocess.Popen
+        """
         self.command = command
 
         # Start the process with subprocess.Popen
@@ -313,54 +405,76 @@ class _Command(object):
         # 3. File handles are closed automatically when the process exits
         self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd)
 
+        # Initalize readers to transfer output from the Popen pipes to local queues
         self.pipes = {"stdout":_PrPipe(self.proc.stdout), "stderr":_PrPipe(self.proc.stderr)}
 
     def get(self, parameter):
+        """Retrieve the value of a local parameter
+
+        Allows access to local parameters when an instance is proxied via
+        multiprocessing.BaseManager (which only provides access to methods, not
+        parameters)
+
+        Args:
+            parameter (string): Name of the parameter on this object to read
+
+        Returns:
+            <parameter value>
+        """
         return getattr(self, parameter)
 
-    # Retrieve the command
-    #
-    # @public
-    # @returns [string]
     def getCommand(self):
+        """Retrieve the command that Popen is running
+
+        Returns:
+            list. List of strings
+        """
         return self.command
 
-    # Retreive a pipe manager by name
-    #
-    # @private
-    # @throws KeyError
-    # @param REQUIRED string procPipeName One of "stdout" or "stderr"
-    # @returns object _PrPipe instance
     def getPipe(self, procPipeName):
+        """Retreive a _PrPipe manager instance by pipe name
+
+        Args:
+            procPipeName (string): One of "stdout" or "stderr"
+
+        Returns:
+            _PrPipe
+
+        Raises:
+            KeyError
+        """
         if procPipeName not in self.pipes:
             raise KeyError(procPipeName+" is not an available pipe")
 
         return self.pipes[procPipeName]
 
-    # Force publishing of any pending messages
-    #
-    # @returns None
     def publish(self):
+        """Force publishing of any pending messages"""
         for pipe in self.pipes.itervalues():
             pipe.publish()
 
-    # Check whether the pipe manager queues report empty
-    #
-    # @public
-    # @param REQUIRED string Pipe manager client queue ID
-    # @param REQUIRED string procPipeName One of "stdout" or "stderr"
-    # @returns bool
     def isQueueEmpty(self, clientId, procPipeName):
+        """Check whether the _PrPipe queues report empty for a given pipe and client
+
+        Args:
+            clientId (string): ID of the client queue
+            procPipeName (string): One of "stdout" or  "stderr"
+
+        Returns:
+            bool
+        """
         return self.getPipe(procPipeName).isEmpty(clientId)
 
-    # Check that all queues are empty
-    # A bit dangerous to use, will block if any client has stopped pulling from
-    # their queue. Better to use isQueueEmpty() for the dedicated client queue.
-    # Sometimes (especially externally) that's not possible.
-    #
-    # @public
-    # @returns bool
     def areAllQueuesEmpty(self):
+        """Check that all queues are empty
+
+        A bit dangerous to use, will block if any client has stopped pulling from
+        their queue. Better to use isQueueEmpty() for the dedicated client queue.
+        Sometimes (especially externally) that's not possible.
+
+        Returns:
+            bool
+        """
         empty = True
 
         for pipename, pipe in self.pipes.iteritems():
@@ -369,34 +483,37 @@ class _Command(object):
 
         return empty
 
-    # Check whether the process reports alive
-    #
-    # @public
-    # @returns bool
     def is_alive(self):
+        """Check whether the Popen process reports alive
+
+        Returns:
+            bool
+        """
         state = True if self.proc.poll() is None else False
 
         return state
 
-    # Invoke the subprocess.Popen.poll() method
-    #
-    # @public
-    # @returns NoneType if alive, or int with exit code if dead
     def poll(self):
+        """Invoke the subprocess.Popen.poll() method
+
+        Returns:
+            NoneType, int. NoneType if alive, or int with exit code if dead
+        """
         return self.proc.poll()
 
-    # Block until the process exits
-    # Does some extra checking to make sure the pipe managers have finished reading
-    # Blocking
-    #
-    # @public
-    # @returns object ProcessRunner instance (self)
     def wait(self):
+        """Block until the process exits
+
+        Does some extra checking to make sure the pipe managers have finished reading
+
+        Returns:
+            None
+        """
         def isAliveLocal():
             self.publish() # Force down any unprocessed messages
-            alive = True
+            alive = False
             for pipe in self.pipes.itervalues():
-                alive = alive and pipe.is_alive()
+                alive = alive or pipe.is_alive()
             return alive
 
         while self.poll() is None or isAliveLocal() is True:
@@ -404,14 +521,19 @@ class _Command(object):
 
         return None
 
-    # Register to get a client queue on a pipe manager. The ID for the queue is
-    # returned from the method as a string.
-    # Blocking
-    #
-    # @public
-    # @param REQUIRED string procPipeName One of "stdout" or "stderr"
-    # @returns string
     def registerClientQueue(self, procPipeName, queueProxy):
+        """Register to get a client queue on a pipe manager
+
+        The ID for the queue is returned from the method as a string
+
+        Args:
+            procPipeName (string): One of "stdout" or "stderr"
+            queueProxy (queueProxy): Proxy object to a Queue we should populate
+
+        Returns:
+            string. Client queue ID (unique only when combined with procPipeName)
+
+        """
         return self.getPipe(procPipeName).registerClientQueue(queueProxy)
 
     # Unregister a client queue from a pipe manager. Prevents other clients from waiting
@@ -464,7 +586,7 @@ _CommandManager.register("_Command", _Command)
 # Can be used in a blocking or non-blocking manner
 # Uses separate processes to monitor stdout and stderr of started processes
 #
-# @param REQUIRED [string,] command Array of strings to pass to subprocess.Popen
+# @param REQUIRED [string,] command List of strings to pass to subprocess.Popen
 # @param OPTONAL string cwd Directory to change to before execution. Passed to subprocess.Popen
 class ProcessRunner:
     def __init__(self, command, cwd=None):
