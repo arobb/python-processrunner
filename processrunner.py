@@ -37,7 +37,8 @@ Takes these parameters:
 Simple example:
 # Run a command, wait for it to complete, and gather its return code
 command = ["scp", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "/path/to/local/file", clientAddress+":/tmp/"]
-result = ProcessRunner(command).wait().poll()
+p = ProcessRunner(command).wait()
+result = p.poll()
 
 
 Complex example:
@@ -197,7 +198,6 @@ class _PrPipe(object):
 
        Clients register their own queues.
     """
-
     def __init__(self, pipeHandle):
         """
         Args:
@@ -214,6 +214,7 @@ class _PrPipe(object):
         self.clientQueuesLock = Lock()
         self.clientQueues = {}
         self.lastClientId = 0
+
 
     # Class contains Locks and Queues which cannot be pickled
     def __getstate__(self):
