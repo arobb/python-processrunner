@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 '''
-Wrapper for process invocation, and some convenience functions
+Wrapper for process invocation, and some convenience functions. Allows for
+multiple readers to consume output from each of the invoked process' output
+pipes. (Makes it possible to write output to the applications' stdout/stderr, 
+as well as to a file.)
 Original reference http://stackoverflow.com/questions/375427/non-blocking-read-on-a-subprocess-pipe-in-python
 
 
@@ -659,6 +662,9 @@ class ProcessRunner:
         # Register this ProcessRunner
         PROCESSRUNNER_PROCESSES.append(self)
 
+        # Whether we've started the child mapLines processes
+        self.mapLinesStarted = False
+
 
     def getCommand(self):
         """Retrieve the command list
@@ -770,6 +776,7 @@ class ProcessRunner:
 
         Does some extra checking to make sure the pipe managers have finished reading
         """
+        self.startMapLines()
         self.run.wait()
         self.join()
 
@@ -898,12 +905,28 @@ class ProcessRunner:
 
         client = Process(target=doWrite, kwargs={"run":self.run, "func":func, "status":status, "clientId":clientId, "procPipeName":procPipeName})
         client.daemon = True
-        client.start()
 
         # Store the process so it can potentially be re-joined
         self.pipeClientProcesses[procPipeName][str(clientId)] = client
 
         return status
+
+
+    # Eliminates a potential race condition in mapLines if two are started on
+    #   the same pipe
+    # All client queues are regiestered at the beginning of the call to
+    #   mapLines, so we can now start the clients sequentially without any
+    #   possible message loss
+    def startMapLines(self):
+        """Start mapLines child processes
+
+        Triggered by wait(), so almost never needs to be called directly.
+        """
+        if self.mapLinesStarted == False:
+            self.mapLinesStarted = True
+            for pipeClientProcesses in self.pipeClientProcesses.itervalues():
+                for client in pipeClientProcesses.itervalues():
+                    client.start()
 
 
     def collectLines(self, procPipeName=None):
