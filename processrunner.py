@@ -2,7 +2,7 @@
 '''
 Wrapper for process invocation, and some convenience functions. Allows for
 multiple readers to consume output from each of the invoked process' output
-pipes. (Makes it possible to write output to the applications' stdout/stderr, 
+pipes. (Makes it possible to write output to the applications' stdout/stderr,
 as well as to a file.)
 Original reference http://stackoverflow.com/questions/375427/non-blocking-read-on-a-subprocess-pipe-in-python
 
@@ -40,8 +40,7 @@ Takes these parameters:
 Simple example:
 # Run a command, wait for it to complete, and gather its return code
 command = ["scp", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "/path/to/local/file", clientAddress+":/tmp/"]
-p = ProcessRunner(command).wait()
-result = p.poll()
+result = ProcessRunner(command).wait().poll()
 
 
 Complex example:
@@ -69,8 +68,7 @@ proc.mapLines(WriteOut(pipe=stdoutFile, outputPrefix=DateNote()), procPipeName="
 proc.mapLines(WriteOut(pipe=stderrFile, outputPrefix=DateNote()), procPipeName="stderr")
 
 # Block regular execution until the process finishes and get return code
-proc.wait()
-result = proc.poll()
+result = proc.wait().poll()
 
 # Wait until the queues are emptied to close the files
 while not proc.areAllQueuesEmpty():
@@ -779,6 +777,8 @@ class ProcessRunner:
         self.startMapLines()
         self.run.wait()
         self.join()
+
+        return self
 
 
     def terminate(self):
