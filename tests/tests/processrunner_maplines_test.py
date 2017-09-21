@@ -48,7 +48,7 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
             # Key aspect
             # When using the threading library, and WriteOut writes to a pipe, the return code
             # doesn't always come back as expected
-            # Seems to be fixed when using multiprocessing in place of threading
+            # Isn't fixed even after the switch to multiprocessing
             with open("/dev/null", 'a') as devnull:
                 proc.mapLines(WriteOut(pipe=devnull, outputPrefix="validation-stdout> "), procPipeName="stdout")
                 proc.wait()
