@@ -62,6 +62,7 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
                     print "Next Poll(): " + str(proc.poll())
 
             proc.terminate()
+            proc.shutdown()
 
             return result
 

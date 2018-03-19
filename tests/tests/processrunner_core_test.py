@@ -41,6 +41,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         output = proc.collectLines()
         result = proc.wait().poll()
         proc.terminate()
+        proc.shutdown()
 
         length = len(output)
 

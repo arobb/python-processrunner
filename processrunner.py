@@ -76,6 +76,42 @@ while not proc.areAllQueuesEmpty():
 
 stdoutFile.close()
 stderrFile.close()
+
+
+Example running a background process with output mappers
+# Logging files
+stdoutFile = open(workingDir+'/stdout.txt', 'a')
+stderrFile = open(workingDir+'/stderr.txt', 'a')
+
+# Date/time notation for output lines in files
+class DateNote:
+    def init(self):
+        pass
+    def __repr__(self):
+        return datetime.now().isoformat() + " "
+
+# Start the process
+proc = ProcessRunner(command)
+
+# Attach output mechanisms to the process's output pipes. These are handled asynchronously, so you can see the output while it is happening
+# Write to the console's stdout and stderr, with custom prefixes for each
+proc.mapLines(WriteOut(pipe=sys.stdout, outputPrefix="validation-stdout> "), procPipeName="stdout")
+proc.mapLines(WriteOut(pipe=sys.stderr, outputPrefix="validation-stderr> "), procPipeName="stderr")
+
+# Write to the log files, prepending each line with a date/time stamp
+proc.mapLines(WriteOut(pipe=stdoutFile, outputPrefix=DateNote()), procPipeName="stdout")
+proc.mapLines(WriteOut(pipe=stderrFile, outputPrefix=DateNote()), procPipeName="stderr")
+
+# Start the mapper processes
+# Only required if you use mapLines()
+proc.startMapLines()
+
+# Everything is now running
+# Do other stuff here
+
+# Synchronously stop the process and all mappers
+proc.terminate() # Kill the command and queue processes
+proc.shutdown() # Destroy the process manager and clean up the OS process
 '''
 import os
 import random
@@ -797,20 +833,40 @@ class ProcessRunner:
             self.run.wait()
             self.join()
         except Exception as e:
-            raise Exception("Error waiting. Process may already be stopped: " \
-            +str(e))
+            pass
 
         return self
 
 
-    def terminate(self):
-        """Clean up straggling processes that might still be running"""
-        # Clean up main process
-        try:
-            self.run.get("proc").terminate()
-        except Exception as e:
-            raise Exception("Exception terminating process: "+str(e))
+    def terminate(self,timeoutMs=3000):
+        """Terminate both the main process and reader queues.
 
+        Args:
+            timeoutMs (int): Milliseconds terminate should wait for main process
+                             to exit before raising an error
+        """
+        # Kill the main process
+        try:
+            self.terminateCommand()
+        except:
+            pass
+
+        # Timeout in case the process doesn't terminate
+        timer=timeoutMs/1000
+        interval=0.1
+        while(timer>0 and self.is_alive()):
+            timer = timer - interval
+            time.sleep(interval)
+
+        if self.is_alive():
+            raise Exception("Main process has not terminated")
+
+        # Kill the queues
+        self.terminateQueues()
+
+
+    def terminateQueues(self):
+        """Clean up straggling processes that might still be running"""
         # Clean up readers
         for procPipeName in self.pipeClientProcesses.iterkeys():
             for clientId, clientProcess in self.pipeClientProcesses[procPipeName].iteritems():
@@ -826,9 +882,25 @@ class ProcessRunner:
                 self.unRegisterClientQueue(procPipeName, clientId)
 
 
+    def terminateCommand(self):
+        """Send SIGTERM to the main process (the command)"""
+        try:
+            self.run.get("proc").terminate()
+        except Exception as e:
+            raise Exception("Exception terminating process: "+str(e))
+
+
+    def killCommand(self):
+        """Send SIGKILL to the main process (the command)"""
+        try:
+            self.run.get("proc").kill()
+        except Exception as e:
+            raise Exception("Exception killing process: "+str(e))
+
+
     def shutdown(self):
-        """Shutdown the process managers. Run after verifying terminate has
-        killed child processes"""
+        """Shutdown the process managers. Run after verifying terminate/kill has
+        destroyed any child processes"""
         self.manager.shutdown()
         self.runManager.shutdown()
 
