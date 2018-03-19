@@ -640,6 +640,9 @@ class ProcessRunner:
         if self.which(command[0]) is None:
             raise CommandNotFound(command[0] + " not found or not executable", command[0])
 
+        # Place to store return code in case we stop the child process
+        self.returncode = None
+
         # Process to run
         self.command = command
 
@@ -741,7 +744,11 @@ class ProcessRunner:
         Returns:
             bool
         """
-        return self.run.is_alive()
+        try:
+            status = self.run.is_alive()
+        except:
+            status = False
+        return status
 
 
     # @deprecated
@@ -755,7 +762,13 @@ class ProcessRunner:
         Returns:
             None, int. NoneType if alive, or int with exit code if dead
         """
-        return self.run.poll()
+        try:
+            self.returncode = self.run.poll()
+            return self.returncode
+        except Exception as e:
+            pass
+
+        return self.returncode
 
 
     def join(self):
@@ -763,6 +776,10 @@ class ProcessRunner:
 
         .wait() calls this, so not necessary to use separately
         """
+        # Join the main command first
+        self.run.join()
+
+        # Join queue processes
         for procPipeName in self.pipeClientProcesses.iterkeys():
             for clientId, clientProcess in self.pipeClientProcesses[procPipeName].iteritems():
                 # print "Joining " + procPipeName + " client " + str(clientId) + "..."
@@ -775,22 +792,43 @@ class ProcessRunner:
         Does some extra checking to make sure the pipe managers have finished reading
         """
         self.startMapLines()
-        self.run.wait()
-        self.join()
+
+        try:
+            self.run.wait()
+            self.join()
+        except Exception as e:
+            raise Exception("Error waiting. Process may already be stopped: " \
+            +str(e))
 
         return self
 
 
     def terminate(self):
         """Clean up straggling processes that might still be running"""
+        # Clean up main process
+        try:
+            self.run.get("proc").terminate()
+        except Exception as e:
+            raise Exception("Exception terminating process: "+str(e))
+
         # Clean up readers
         for procPipeName in self.pipeClientProcesses.iterkeys():
             for clientId, clientProcess in self.pipeClientProcesses[procPipeName].iteritems():
                 # Close any remaining client readers
-                self.pipeClientProcesses[procPipeName][str(clientId)].terminate()
+                try:
+                    self.pipeClientProcesses[procPipeName][str(clientId)].terminate()
+                except Exception as e:
+                    raise Exception(
+                        "Exception closing "+procPipeName+" client "\
+                        +str(clientId)+": "+str(e)+ \
+                        ". Did you trigger startMapLines first?")
                 # Remove references to client queues
                 self.unRegisterClientQueue(procPipeName, clientId)
 
+
+    def shutdown(self):
+        """Shutdown the process managers. Run after verifying terminate has
+        killed child processes"""
         self.manager.shutdown()
         self.runManager.shutdown()
 
