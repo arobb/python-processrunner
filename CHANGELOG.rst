@@ -2,6 +2,10 @@ Change Log
 ==========
 Documented changes to the project.
 
+Version 2.0.1
+-------------
+Fixes an issue where installation was not installing the core script.
+
 Version 2.0.0
 -------------
 This version swaps out the threading library for multiprocessing, so discrete
