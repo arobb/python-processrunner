@@ -2,6 +2,10 @@ Change Log
 ==========
 Documented changes to the project.
 
+Version 2.1.1
+-------------
+Updated README to include new methods.
+
 Version 2.1.0
 -------------
 Addition of shutdown() and killCommand() methods, and changes to methods

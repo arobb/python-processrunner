@@ -76,6 +76,15 @@ isQueueEmpty
 
   *Properties*
 
+killCommand
+  Send SIGKILL to the main process (the command).
+
+  *Parameters*
+    - None
+
+  *Properties*
+    - None
+
 mapLines
   Run a function against each line presented by one pipe manager.
   Returns a reference to a ``dict`` that can be used to monitor the status of
@@ -110,6 +119,24 @@ registerForClientQueue
 
   *Properties*
     - None
+
+shutdown
+  Shutdown the process managers. Run after verifying terminate/kill has destroyed any child processes. Should be run following the successful completion of the ``terminate`` or ``killCommand`` methods to clear any lingering process entries.
+
+  *Parameters*
+    - None
+
+  *Properties*
+    - Blocking: Returns when the internal process managers stop.
+
+terminate
+  Terminate both the main process and reader queues.
+
+  *Parameters*
+    - **timeoutMs** OPTIONAL ``int`` Milliseconds ``terminate`` should wait for main process to exit before raising an error.
+
+  *Properties*
+    - Blocking: Returns when the main process exits; if the timeout occurs, terminate raises a basic ``Exception``.
 
 unRegisterClientQueue
   Unregister a client queue from a pipe manager. Prevents clients from waiting on other clients that will never perform additional reads.
