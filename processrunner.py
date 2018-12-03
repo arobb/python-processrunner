@@ -1,5 +1,25 @@
 # -*- coding: utf-8 -*-
-'''
+from __future__ import unicode_literals
+from builtins import str as text
+from builtins import dict
+
+import os
+import random
+import sys
+import time
+from subprocess import PIPE, Popen, STDOUT
+
+import multiprocessing
+from multiprocessing import Process, Lock, JoinableQueue
+from multiprocessing.managers import BaseManager
+
+try:
+    from Queue import Empty
+except ImportError:
+    from queue import Empty # python 3.x
+
+
+"""
 Wrapper for process invocation, and some convenience functions. Allows for
 multiple readers to consume output from each of the invoked process' output
 pipes. (Makes it possible to write output to the applications' stdout/stderr,
@@ -112,21 +132,7 @@ proc.startMapLines()
 # Synchronously stop the process and all mappers
 proc.terminate() # Kill the command and queue processes
 proc.shutdown() # Destroy the process manager and clean up the OS process
-'''
-import os
-import random
-import sys
-import time
-from subprocess import PIPE, Popen, STDOUT
-
-import multiprocessing
-from multiprocessing import Process, Lock, JoinableQueue
-from multiprocessing.managers import BaseManager
-
-try:
-    from Queue import Empty
-except ImportError:
-    from queue import Empty # python 3.x
+"""
 
 
 class CommandNotFound(OSError):
@@ -204,11 +210,11 @@ def WriteOut(pipe, outputPrefix):
 
     def func(line):
         try:
-            pipe.write(str(outputPrefix)+str(line))
+            pipe.write(text(outputPrefix)+text(line))
             pipe.flush()
 
         except ValueError as e:
-            print "WriteOut caught odd error: " + str(e)
+            print("WriteOut caught odd error: " + text(e))
 
     return func
 
@@ -249,7 +255,7 @@ class _PrPipe(object):
         self.process.start()
 
         self.clientQueuesLock = Lock()
-        self.clientQueues = {}
+        self.clientQueues = dict()
         self.lastClientId = 0
 
 
@@ -273,7 +279,7 @@ class _PrPipe(object):
             queue (Queue): Queue to write to
         """
         for line in iter(out.readline, b''):
-            queue.put(line)
+            queue.put(line.decode('utf-8'))
         out.close()
 
 
@@ -289,7 +295,7 @@ class _PrPipe(object):
 
                 with self.clientQueuesLock:
                     line = self.queue.get_nowait()
-                    for q in self.clientQueues.itervalues():
+                    for q in list(self.clientQueues.values()):
                         q.put(line)
 
                 self.queue.task_done()
@@ -307,7 +313,7 @@ class _PrPipe(object):
         Returns:
             QueueProxy
         """
-        return self.clientQueues[str(clientId)]
+        return self.clientQueues[text(clientId)]
 
 
     def isEmpty(self, clientId=None):
@@ -331,7 +337,7 @@ class _PrPipe(object):
             empty = self.queue.empty()
 
             with self.clientQueuesLock:
-                for q in self.clientQueues.itervalues():
+                for q in list(self.clientQueues.values()):
                     empty = empty and q.empty()
 
             return empty
@@ -389,9 +395,9 @@ class _PrPipe(object):
         self.lastClientId = clientId
 
         with self.clientQueuesLock:
-            self.clientQueues[str(clientId)] = queueProxy
+            self.clientQueues[text(clientId)] = queueProxy
 
-        return str(clientId)
+        return text(clientId)
 
 
     def unRegisterClientQueue(self, clientId):
@@ -409,7 +415,7 @@ class _PrPipe(object):
         with self.clientQueuesLock:
             self.clientQueues.pop(clientId)
 
-        return str(clientId)
+        return text(clientId)
 
 
     def destructiveAudit(self):
@@ -418,11 +424,11 @@ class _PrPipe(object):
         This is a destructive operation, as it *removes* a line from each Queue
         """
         with self.clientQueuesLock:
-            for clientId in self.clientQueues.iterkeys():
+            for clientId in list(self.clientQueues):
                 try:
-                    print "clientId " + str(clientId) + ": " + self.getLine(clientId)
+                    print("clientId " + text(clientId) + ": " + self.getLine(clientId))
                 except:
-                    print "clientId " + str(clientId) + " is empty"
+                    print("clientId " + text(clientId) + " is empty")
 
 
 # Private class only intended to be used by ProcessRunner
@@ -451,7 +457,7 @@ class _Command(object):
         self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd)
 
         # Initalize readers to transfer output from the Popen pipes to local queues
-        self.pipes = {"stdout":_PrPipe(self.proc.stdout), "stderr":_PrPipe(self.proc.stderr)}
+        self.pipes = dict(stdout=_PrPipe(self.proc.stdout), stderr=_PrPipe(self.proc.stderr))
 
 
     def get(self, parameter):
@@ -499,7 +505,7 @@ class _Command(object):
 
     def publish(self):
         """Force publishing of any pending messages"""
-        for pipe in self.pipes.itervalues():
+        for pipe in list(self.pipes.values()):
             pipe.publish()
 
 
@@ -528,8 +534,8 @@ class _Command(object):
         """
         empty = True
 
-        for pipename, pipe in self.pipes.iteritems():
-            print pipename + " is " + ("empty" if pipe.isEmpty() == True else "not empty")
+        for pipename, pipe in list(self.pipes.items()):
+            print(pipename + " is " + ("empty" if pipe.isEmpty() == True else "not empty"))
             empty = empty and pipe.isEmpty()
 
         return empty
@@ -566,7 +572,7 @@ class _Command(object):
         def isAliveLocal():
             self.publish() # Force down any unprocessed messages
             alive = False
-            for pipe in self.pipes.itervalues():
+            for pipe in list(self.pipes.values()):
                 alive = alive or pipe.is_alive()
             return alive
 
@@ -635,7 +641,7 @@ class _Command(object):
         Triggers the pipes' destructiveAudit function which prints the last
         line of the queue or an 'empty' message.
         """
-        for pipe in self.pipes.itervalues():
+        for pipe in list(self.pipes.values()):
             pipe.destructiveAudit()
 
 
@@ -645,7 +651,10 @@ class _Command(object):
 #   the process that runs Popen and publishes output from Popen
 #   into the client queues.
 class _CommandManager(BaseManager): pass
-_CommandManager.register("_Command", _Command)
+if sys.version_info[0] == 2:
+    _CommandManager.register(str("_Command"), _Command) # MUST remain str()
+elif sys.version_info[0] == 3 :
+    _CommandManager.register("_Command", _Command)
 
 
 class ProcessRunner:
@@ -665,12 +674,12 @@ class ProcessRunner:
         # Verify the command is a list of strings
         if not isinstance(command, list):
             raise TypeError("ProcessRunner command must be a list of strings. "
-                            + type(command) + " given.")
+                            + text(type(command)) + " given.")
 
         for i, param in enumerate(command):
-            if not isinstance(param, basestring):
+            if not isinstance(param, str):
                 raise TypeError("ProcessRunner command must be a list of strings. "
-                                +"Parameter "+str(i)+" is "+type(command)+".")
+                                +"Parameter {0} is {1}.".format(text(i), text(type(command))))
 
         # Verify the command exists
         if self.which(command[0]) is None:
@@ -686,8 +695,8 @@ class ProcessRunner:
         self.manager = multiprocessing.Manager()
 
         # Storage for multiprocessing.Queues started on behalf of clients
-        self.pipeClients = {"stdout":{}, "stderr":{}}
-        self.pipeClientProcesses = {"stdout":{}, "stderr":{}}
+        self.pipeClients = dict(stdout=dict(), stderr=dict())
+        self.pipeClientProcesses = dict(stdout=dict(), stderr=dict())
 
         # Instantiate the Popen wrapper
         self.runManager = _CommandManager()
@@ -816,10 +825,10 @@ class ProcessRunner:
         self.run.join()
 
         # Join queue processes
-        for procPipeName in self.pipeClientProcesses.iterkeys():
-            for clientId, clientProcess in self.pipeClientProcesses[procPipeName].iteritems():
-                # print "Joining " + procPipeName + " client " + str(clientId) + "..."
-                self.pipeClientProcesses[procPipeName][str(clientId)].join()
+        for procPipeName in list(self.pipeClientProcesses):
+            for clientId, clientProcess in list(self.pipeClientProcesses[procPipeName].items()):
+                # print("Joining " + procPipeName + " client " + text(clientId) + "...")
+                self.pipeClientProcesses[procPipeName][text(clientId)].join()
 
 
     def wait(self):
@@ -868,15 +877,15 @@ class ProcessRunner:
     def terminateQueues(self):
         """Clean up straggling processes that might still be running"""
         # Clean up readers
-        for procPipeName in self.pipeClientProcesses.iterkeys():
-            for clientId, clientProcess in self.pipeClientProcesses[procPipeName].iteritems():
+        for procPipeName in list(self.pipeClientProcesses):
+            for clientId, clientProcess in list(self.pipeClientProcesses[procPipeName].items()):
                 # Close any remaining client readers
                 try:
-                    self.pipeClientProcesses[procPipeName][str(clientId)].terminate()
+                    self.pipeClientProcesses[procPipeName][text(clientId)].terminate()
                 except Exception as e:
                     raise Exception(
                         "Exception closing "+procPipeName+" client "\
-                        +str(clientId)+": "+str(e)+ \
+                        +text(clientId)+": "+text(e)+ \
                         ". Did you trigger startMapLines first?")
                 # Remove references to client queues
                 self.unRegisterClientQueue(procPipeName, clientId)
@@ -887,7 +896,7 @@ class ProcessRunner:
         try:
             self.run.get("proc").terminate()
         except Exception as e:
-            raise Exception("Exception terminating process: "+str(e))
+            raise Exception("Exception terminating process: "+text(e))
 
 
     def killCommand(self):
@@ -895,7 +904,7 @@ class ProcessRunner:
         try:
             self.run.get("proc").kill()
         except Exception as e:
-            raise Exception("Exception killing process: "+str(e))
+            raise Exception("Exception killing process: "+text(e))
 
 
     def shutdown(self):
@@ -937,8 +946,8 @@ class ProcessRunner:
         """
         self.run.unRegisterClientQueue(procPipeName, clientId)
 
-        if str(clientId) in self.pipeClientProcesses:
-            self.pipeClientProcesses.pop(str(clientId))
+        if text(clientId) in self.pipeClientProcesses:
+            self.pipeClientProcesses.pop(text(clientId))
 
 
     def getLineFromPipe(self, procPipeName, clientId):
@@ -987,16 +996,16 @@ class ProcessRunner:
             dict
         """
         clientId = self.registerForClientQueue(procPipeName)
-        status = {'complete':False}
+        status = dict(complete=False)
 
         def doWrite(run, func, status, clientId, procPipeName):
-            # print "starting doWrite for " + procPipeName
+            # print("starting doWrite for " + procPipeName)
 
             try:
                 # Continue while there MIGHT be data to read
                 while run.is_alive() \
                     or not run.isQueueEmpty(procPipeName, clientId):
-                    # print "might be data to read in " + procPipeName
+                    # print("might be data to read in " + procPipeName)
 
                     # Continue while we KNOW THERE IS data to read
                     while True:
@@ -1013,11 +1022,11 @@ class ProcessRunner:
             finally:
                 pass
 
-        client = Process(target=doWrite, kwargs={"run":self.run, "func":func, "status":status, "clientId":clientId, "procPipeName":procPipeName})
+        client = Process(target=doWrite, kwargs=dict(run=self.run, func=func, status=status, clientId=clientId, procPipeName=procPipeName))
         client.daemon = True
 
         # Store the process so it can potentially be re-joined
-        self.pipeClientProcesses[procPipeName][str(clientId)] = client
+        self.pipeClientProcesses[procPipeName][text(clientId)] = client
 
         return status
 
@@ -1034,8 +1043,8 @@ class ProcessRunner:
         """
         if self.mapLinesStarted == False:
             self.mapLinesStarted = True
-            for pipeClientProcesses in self.pipeClientProcesses.itervalues():
-                for client in pipeClientProcesses.itervalues():
+            for pipeClientProcesses in list(self.pipeClientProcesses.values()):
+                for client in list(pipeClientProcesses.values()):
                     client.start()
 
 
@@ -1051,9 +1060,9 @@ class ProcessRunner:
         outputList = []
 
         # Register for client IDs from all appropriate pipe managers
-        clientIds = {}
+        clientIds = dict()
         if procPipeName is None:
-            for pipeName in self.pipeClients.iterkeys():
+            for pipeName in list(self.pipeClients):
                 clientIds[pipeName] = self.registerForClientQueue(pipeName)
 
         else:
@@ -1064,14 +1073,14 @@ class ProcessRunner:
             complete = True
             complete = complete and not self.is_alive()
 
-            for pipeName, clientId in clientIds.iteritems():
+            for pipeName, clientId in list(clientIds.items()):
                 complete = complete and self.isQueueEmpty(pipeName, clientId)
 
             return complete
 
         # Main loop to pull everything off our queues
         while not checkComplete(self, clientIds):
-            for pipeName, clientId in clientIds.iteritems():
+            for pipeName, clientId in list(clientIds.items()):
                 while True:
                     try:
                         line = self.getLineFromPipe(pipeName, clientId).rstrip('\n')

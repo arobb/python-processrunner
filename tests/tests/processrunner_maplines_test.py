@@ -26,21 +26,21 @@ result = proc.wait().poll()
 '''
 def printQsize(proc):
     q = proc.pipes['stdout'].queue
-    while proc.isAlive() or q.qsize()>0:
-        print q.qsize()
+    while proc.isAlive() or q.qsize() > 0:
+        print(q.qsize())
         time.sleep(0.01)
 
 
 class ProcessRunnerTestCase(unittest.TestCase):
     def setUp(self):
-        sampleCommandPath = os.path.join(os.path.dirname(__file__),'..','test-output-script.py')
+        sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
 
 
 class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
 
     def test_processrunner_return_code_with_maplines(self):
-        command = [self.sampleCommandPath,"--lines","5","--block","1","--sleep","0","--return-code","1"]
+        command = [self.sampleCommandPath, "--lines", "5", "--block", "1", "--sleep", "0", "--return-code", "1"]
 
         def run():
             proc = ProcessRunner(command)
@@ -55,11 +55,11 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
                 result = proc.poll()
 
                 if result != 1:
-                    print ""
-                    print "Result output isn't 1!: '" + str(result) + "'"
-                    print "Waiting another moment..."
+                    print("")
+                    print("Result output isn't 1!: '" + str(result) + "'")
+                    print("Waiting another moment...")
                     time.sleep(1)
-                    print "Next Poll(): " + str(proc.poll())
+                    print("Next Poll(): " + str(proc.poll()))
 
             proc.terminate()
             proc.shutdown()
@@ -73,7 +73,7 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
             totalReturn += run()
 
         self.assertEqual(totalReturn, runs,
-            'Bad return code found! Expecting '+str(runs)+' got '+str(totalReturn))
+            'Bad return code found! Expecting ' + str(runs) + ' got ' + str(totalReturn))
 
 
 if __name__ == "__main__":

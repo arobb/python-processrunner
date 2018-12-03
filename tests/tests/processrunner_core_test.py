@@ -21,14 +21,14 @@ result = proc.wait().poll()
 '''
 def printQsize(proc):
     q = proc.pipes['stdout'].queue
-    while proc.isAlive() or q.qsize()>0:
-        print q.qsize()
+    while proc.isAlive() or q.qsize() > 0:
+        print(q.qsize())
         time.sleep(0.01)
 
 
 class ProcessRunnerTestCase(unittest.TestCase):
     def setUp(self):
-        sampleCommandPath = os.path.join(os.path.dirname(__file__),'..','test-output-script.py')
+        sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
 
 
@@ -36,7 +36,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
     def test_processrunner_correct_stdout_count(self):
         testLen = 10000
-        command = [self.sampleCommandPath,"--lines",str(testLen),"--block","1","--sleep","0"]
+        command = [self.sampleCommandPath, "--lines", str(testLen), "--block", "1", "--sleep", "0"]
         proc = ProcessRunner(command)
         output = proc.collectLines()
         result = proc.wait().poll()
