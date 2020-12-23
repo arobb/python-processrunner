@@ -2,10 +2,11 @@
 # https://gehrcke.de/2014/02/distributing-a-python-command-line-application/
 # ^ Structure help for overall project
 
-from setuptools import setup, find_packages
+from setuptools import setup
 # To use a consistent encoding
 from codecs import open
 from os import path
+from gitversion import get_git_version
 
 here = path.abspath(path.dirname(__file__))
 
@@ -16,9 +17,8 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 setup(
       name='processrunner'
 
-      # Use versioning from git tags
-    , use_scm_version=True
-    , setup_requires=['setuptools_scm']
+      # Version
+    , version=get_git_version()
 
     # Descriptions
     , description='Easily trigger and manage output from external processes.'

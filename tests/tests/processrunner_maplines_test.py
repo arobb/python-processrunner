@@ -7,10 +7,15 @@
 import os
 import sys
 import time
+import tracemalloc
 import unittest
+import pprint
 
 # import context
-from processrunner import ProcessRunner, WriteOut
+import processrunner
+from processrunner import ProcessRunner, WriteOut, runCommand
+
+tracemalloc.start()
 
 '''
 # Watch the main queue fill and empty
@@ -42,6 +47,15 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
     def test_processrunner_return_code_with_maplines(self):
         command = [self.sampleCommandPath, "--lines", "5", "--block", "1", "--sleep", "0", "--return-code", "1"]
 
+        # print("Pre-Start: Total: ", len(processrunner.PROCESSRUNNER_PROCESSES), ", Active: ", processrunner.getActiveProcesses())
+        # startProc = ProcessRunner(["lsof", "-p", str(os.getpid())])
+        # files = startProc.collectLines()
+        # print("Open files: ", len(files))
+        # pprint.pprint(files)
+        # startProc.terminate()
+        # startProc.shutdown()
+
+
         def run():
             proc = ProcessRunner(command)
 
@@ -50,7 +64,8 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
             # doesn't always come back as expected
             # Isn't fixed even after the switch to multiprocessing
             with open("/dev/null", 'a') as devnull:
-                proc.mapLines(WriteOut(pipe=devnull, outputPrefix="validation-stdout> "), procPipeName="stdout")
+                proc.mapLines(WriteOut(pipe=devnull, outputPrefix="test-output-script.py-stdout> "), procPipeName="stdout")
+                proc.mapLines(WriteOut(pipe=sys.stderr, outputPrefix="test-output-script.py-stderr> "), procPipeName="stderr")
                 proc.wait()
                 result = proc.poll()
 
@@ -64,13 +79,26 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
             proc.terminate()
             proc.shutdown()
 
+
+
             return result
 
         # Run a bunch of times
         runs = 200
         totalReturn = 0
         for i in range(runs):
+            # print("Start: Total: ", len(processrunner.PROCESSRUNNER_PROCESSES), ", Active: ", processrunner.getActiveProcesses())
+            # startProc = ProcessRunner(["lsof", "-p", str(os.getpid())])
+            # files = startProc.collectLines()
+            # print("Open files: ", len(files))
+            # pprint.pprint(files)
+            # startProc.terminate()
+            # startProc.shutdown()
+
             totalReturn += run()
+
+            # print("End: ", len(processrunner.PROCESSRUNNER_PROCESSES), ", Active: ", processrunner.getActiveProcesses())
+            # runCommand(["lsof", "-p", str(os.getpid())])
 
         self.assertEqual(totalReturn, runs,
             'Bad return code found! Expecting ' + str(runs) + ' got ' + str(totalReturn))
