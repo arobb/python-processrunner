@@ -7,6 +7,12 @@ import random
 
 from multiprocessing import Process, Lock, JoinableQueue
 
+try:  # Python 2.7
+    from Queue import Empty
+except ImportError:  # Python 3.x
+    from queue import Empty
+
+from . import settings
 
 # Private class only intended to be used by ProcessRunner
 class _PrPipe(object):
@@ -24,7 +30,7 @@ class _PrPipe(object):
 
         self.id = ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
 
-        self.queue = JoinableQueue(MAX_QUEUE_LENGTH)
+        self.queue = JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
 
         self.process = Process(target=self.enqueue_output, kwargs={"out":pipeHandle,"queue":self.queue})
         self.process.daemon = True
@@ -204,7 +210,8 @@ class _PrPipe(object):
 
         """
         with self.clientQueuesLock:
-            self.clientQueues.pop(clientId)
+            if text(clientId) in self.clientQueues:
+                self.clientQueues.pop(clientId)
 
         return text(clientId)
 

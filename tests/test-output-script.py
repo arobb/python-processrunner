@@ -10,7 +10,8 @@ import time
 from datetime import datetime
 
 import tests.context
-from processrunner import ProcessRunner, WriteOut
+from processrunner import ProcessRunner
+from processrunner import writeout
 
 
 class TestScript(object):
@@ -33,8 +34,8 @@ class TestScript(object):
             def __repr__(self):
                 return datetime.now().isoformat() + " "
 
-        self.stdout = WriteOut(pipe=sys.stdout, outputPrefix=DateNote())
-        self.stderr = WriteOut(pipe=sys.stderr, outputPrefix=DateNote())
+        self.stdout = writeout(pipe=sys.stdout, outputPrefix=DateNote())
+        self.stderr = writeout(pipe=sys.stderr, outputPrefix=DateNote())
 
         self.write(self.config['lines'])
         exit(int(self.config['return-code']))

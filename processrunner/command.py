@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 from builtins import str as text
 from builtins import dict
+from subprocess import PIPE, Popen
 
 import logging
+import time
+
+from . import settings
+from .prpipe import _PrPipe
+
 
 # Private class only intended to be used by ProcessRunner
 class _Command(object):
@@ -29,11 +35,12 @@ class _Command(object):
         # 1. stdout and stderr are captured via pipes
         # 2. Output from stdout and stderr buffered per line
         # 3. File handles are closed automatically when the process exits
+        ON_POSIX = settings.config["ON_POSIX"]
         self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd)
         # with Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd) as proc:
         #     self.proc = proc
 
-        # Initalize readers to transfer output from the Popen pipes to local queues
+        # Initialize readers to transfer output from the Popen pipes to local queues
         self.pipes = dict(stdout=_PrPipe(self.proc.stdout), stderr=_PrPipe(self.proc.stderr))
 
 
@@ -133,7 +140,7 @@ class _Command(object):
         return empty
 
 
-    def is_alive(self):
+    def isAlive(self):
         """Check whether the Popen process reports alive
 
         Returns:
@@ -172,6 +179,24 @@ class _Command(object):
             time.sleep(0.01)
 
         return None
+
+
+    def terminate(self):
+        """Proxy call for Popen.terminate
+
+        Returns:
+            None
+        """
+        return self.proc.terminate()
+
+
+    def kill(self):
+        """Proxy call for Popen.kill
+
+        Returns:
+            None
+        """
+        return self.proc.kill()
 
 
     def registerClientQueue(self, procPipeName, queueProxy):

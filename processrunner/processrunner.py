@@ -4,6 +4,7 @@ from builtins import dict
 
 import logging
 import os
+import random
 import sys
 import time
 
@@ -11,10 +12,34 @@ import multiprocessing
 from multiprocessing import Process
 from multiprocessing.managers import BaseManager
 
-try:
+try:  # Python 2.7
     from Queue import Empty
-except ImportError:
-    from queue import Empty # python 3.x
+except ImportError:  # Python 3.x
+    from queue import Empty
+
+from . import settings
+from .command import _Command
+from .which import which
+
+
+# Global values when using ProcessRunner
+PROCESSRUNNER_PROCESSES = []  # Holding list for instances of ProcessRunner
+
+def getActiveProcesses():
+    """Retrieve a list of running processes started by ProcessRunner
+
+    Returns:
+        list. List of ProcessRunner instances
+    """
+    active = []
+
+    for p in PROCESSRUNNER_PROCESSES:
+        if p.is_alive():
+            active.append(p)
+
+    print("Active: {}".format(len(active)))
+
+    return active
 
 
 # Configure a multiprocessing.BaseManager to allow for proxy access
@@ -24,7 +49,7 @@ except ImportError:
 #   into the client queues.
 class _CommandManager(BaseManager): pass
 if sys.version_info[0] == 2:
-    _CommandManager.register(str("_Command"), _Command) # MUST remain str()
+    _CommandManager.register(str("_Command"), _Command)  # MUST remain str()
 elif sys.version_info[0] == 3 :
     _CommandManager.register("_Command", _Command)
 
@@ -45,6 +70,12 @@ class ProcessRunner:
         """
         self._initializeLogging()
 
+        # Shared settings
+        settings.init()
+        settings.config["AUTHKEY"] = ''.join([random.choice('0123456789ABCDEF') for x in range(256)])
+        settings.config["MAX_QUEUE_LENGTH"] = 0  # Maximum length for Queues
+        settings.config["ON_POSIX"] = 'posix' in sys.builtin_module_names
+
         # Verify the command is a list of strings
         if not isinstance(command, list):
             raise TypeError("ProcessRunner command must be a list of strings. "
@@ -56,7 +87,7 @@ class ProcessRunner:
                                 +"Parameter {0} is {1}.".format(text(i), text(type(command))))
 
         # Verify the command exists
-        if self.which(command[0]) is None:
+        if which(command[0]) is None:
             raise CommandNotFound(command[0] + " not found or not executable", command[0])
 
         # Place to store return code in case we stop the child process
@@ -115,36 +146,6 @@ class ProcessRunner:
         self.run.publish()
 
 
-    @staticmethod
-    def which(program):
-        """Verify command exists
-
-        Returns absolute path to exec as a string, or None if not found
-        http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
-
-        Args:
-            program (string): The name or full path to desired executable
-
-        Returns:
-            string, None
-        """
-        def is_exe(fpath):
-            return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
-
-        fpath, fname = os.path.split(program)
-        if fpath:
-            if is_exe(program):
-                return program
-        else:
-            for path in os.environ["PATH"].split(os.pathsep):
-                path = path.strip('"')
-                exe_file = os.path.join(path, program)
-                if is_exe(exe_file):
-                    return exe_file
-
-        return None
-
-
     def isQueueEmpty(self, procPipeName, clientId):
         """Check whether the pipe manager queues report empty
 
@@ -170,22 +171,17 @@ class ProcessRunner:
         """
         return self.run.areAllQueuesEmpty
 
-    def is_alive(self):
+    def isAlive(self):
         """Check whether the Popen process reports alive
 
         Returns:
             bool
         """
         try:
-            status = self.run.is_alive()
+            status = self.run.isAlive()
         except:
             status = False
         return status
-
-
-    # @deprecated
-    def isAlive(self):
-        return self.is_alive()
 
 
     def poll(self):
@@ -198,24 +194,9 @@ class ProcessRunner:
             self.returncode = self.run.poll()
             return self.returncode
         except Exception as e:
-            pass
+            raise e
 
         return self.returncode
-
-
-    def join(self):
-        """Join any client processes, waiting for them to exit
-
-        .wait() calls this, so not necessary to use separately
-        """
-        # Join the main command first
-        self.run.join()
-
-        # Join queue processes
-        for procPipeName in list(self.pipeClientProcesses):
-            for clientId, clientProcess in list(self.pipeClientProcesses[procPipeName].items()):
-                self._log.debug("Joining " + procPipeName + " client " + text(clientId) + "...")
-                self.pipeClientProcesses[procPipeName][text(clientId)].join()
 
 
     def wait(self):
@@ -224,18 +205,16 @@ class ProcessRunner:
         Does some extra checking to make sure the pipe managers have finished reading
         """
         self.startMapLines()
-
-        try:
-            self.run.wait()
-            self.join()
-        except Exception as e:
-            pass
+        self.run.wait()
 
         return self
 
 
-    def terminate(self,timeoutMs=3000):
-        """Terminate both the main process and reader queues.
+    def terminate(self, timeoutMs=3000):
+        """Terminate both the target process (the command) and reader queues.
+
+        Use terminate to gracefully stop the target process (the command) and readers once you're done reading.
+        Use `shutdown` if you are just trying to clean up, as it will trigger `terminate`.
 
         Args:
             timeoutMs (int): Milliseconds terminate should wait for main process
@@ -244,25 +223,28 @@ class ProcessRunner:
         # Kill the main process
         try:
             self.terminateCommand()
-        except:
-            pass
+        except Exception as e:
+            raise e
 
         # Timeout in case the process doesn't terminate
-        timer=timeoutMs/1000
-        interval=0.1
-        while(timer>0 and self.is_alive()):
+        timer = timeoutMs/1000
+        interval = 0.1
+        while timer > 0 and self.isAlive():
             timer = timer - interval
             time.sleep(interval)
 
-        if self.is_alive():
+        if self.isAlive():
             raise Exception("Main process has not terminated")
 
         # Kill the queues
-        self.terminateQueues()
+        self._terminateQueues()
 
 
-    def terminateQueues(self):
-        """Clean up straggling processes that might still be running"""
+    def _terminateQueues(self):
+        """Clean up straggling processes that might still be running.
+
+        Run once you've finished reading from the queues.
+        """
         # Clean up readers
         for procPipeName in list(self.pipeClientProcesses):
             for clientId, clientProcess in list(self.pipeClientProcesses[procPipeName].items()):
@@ -281,24 +263,34 @@ class ProcessRunner:
     def terminateCommand(self):
         """Send SIGTERM to the main process (the command)"""
         try:
-            self.run.get("proc").terminate()
+            self.run.terminate()
+
+        except OSError as e:
+            # 3 is "No such process", which probably means the process is already terminated
+            if e.errno == 3:
+                pass
+            else:
+                raise e
+
         except Exception as e:
-            raise Exception("Exception terminating process: "+text(e))
+            raise e
 
 
     def killCommand(self):
         """Send SIGKILL to the main process (the command)"""
-        try:
-            self.run.get("proc").kill()
-        except Exception as e:
-            raise Exception("Exception killing process: "+text(e))
+        return self.run.kill()
 
 
     def shutdown(self):
         """Shutdown the process managers. Run after verifying terminate/kill has
-        destroyed any child processes"""
+        destroyed any child processes
+
+        Runs `terminate` in case it hasn't already been run"""
+        self.terminate()
         self.manager.shutdown()
         self.runManager.shutdown()
+
+        PROCESSRUNNER_PROCESSES.remove(self)
 
 
     def registerForClientQueue(self, procPipeName):
@@ -312,7 +304,7 @@ class ProcessRunner:
         Returns:
             string. Client's queue ID on this pipe
         """
-        q = self.manager.Queue(MAX_QUEUE_LENGTH)
+        q = self.manager.Queue(settings.config["MAX_QUEUE_LENGTH"])
         clientId = self.run.registerClientQueue(procPipeName, q)
         self.pipeClients[procPipeName][clientId] = q
 
@@ -390,7 +382,7 @@ class ProcessRunner:
 
             try:
                 # Continue while there MIGHT be data to read
-                while run.is_alive() \
+                while run.isAlive() \
                   or not run.isQueueEmpty(procPipeName, clientId):
                     self._log.debug("might be data to read in " + procPipeName)
 
@@ -420,7 +412,7 @@ class ProcessRunner:
 
     # Eliminates a potential race condition in mapLines if two are started on
     #   the same pipe
-    # All client queues are regiestered at the beginning of the call to
+    # All client queues are registered at the beginning of the call to
     #   mapLines, so we can now start the clients sequentially without any
     #   possible message loss
     def startMapLines(self):
@@ -458,7 +450,7 @@ class ProcessRunner:
         # Internal function to check whether we are done reading
         def checkComplete(self, clientIds):
             complete = True
-            complete = complete and not self.is_alive()
+            complete = complete and not self.isAlive()
 
             for pipeName, clientId in list(clientIds.items()):
                 complete = complete and self.isQueueEmpty(pipeName, clientId)

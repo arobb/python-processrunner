@@ -16,7 +16,7 @@ from multiprocessing.managers import BaseManager
 try:
     from Queue import Empty
 except ImportError:
-    from queue import Empty # python 3.x
+    from queue import Empty  # python 3.x
 
 
 """
@@ -203,6 +203,8 @@ def ssh(remoteAddress, remoteCommand, outputPrefix="ssh> "):
     return returnCode
 
 
+
+# Moved
 def WriteOut(pipe, outputPrefix):
     """Use with ProcessRunner.mapLines to easily write to your favorite pipe
        or handle
@@ -227,6 +229,7 @@ def WriteOut(pipe, outputPrefix):
     return func
 
 
+# Moved
 def getActiveProcesses():
     """Retrieve a list of running processes started by ProcessRunner
 
