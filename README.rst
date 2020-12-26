@@ -121,7 +121,7 @@ registerForClientQueue
     - None
 
 shutdown
-  Shutdown the process managers. Run after verifying terminate/kill has destroyed any child processes. Should be run following the successful completion of the ``terminate`` or ``killCommand`` methods to clear any lingering process entries.
+  Shutdown the process and queue multiprocessing managers. Run after verifying terminate/kill has destroyed any child processes. Should be run following the successful completion of the ``terminate`` or ``killCommand`` methods to clear any lingering process entries. Internally runs ``terminate`` in case it hasn't already run.
 
   *Parameters*
     - None
@@ -130,7 +130,7 @@ shutdown
     - Blocking: Returns when the internal process managers stop.
 
 terminate
-  Terminate both the main process and reader queues.
+  Terminate both the main process and reader queues. Run before ``shutdown`` to independently terminate those prior to shutting down the Popen and queue multiprocessing Managers.
 
   *Parameters*
     - **timeoutMs** OPTIONAL ``int`` Milliseconds ``terminate`` should wait for main process to exit before raising an error.
@@ -190,8 +190,8 @@ ssh
   *Properties*
     - Blocking: Returns once the external command exits.
 
-WriteOut
-  The WriteOut function is used to prepend lines from the external process with a given string. Given a pipe and a string, it returns a function that accepts a line of text, then writes that line to the provided pipe, prepended with a user provided string. Useful when handling output from processes directly. See example use below.
+writeOut
+  The writeOut function is used to prepend lines from the external process with a given string. Given a pipe and a string, it returns a function that accepts a line of text, then writes that line to the provided pipe, prepended with a user provided string. Useful when handling output from processes directly. See example use below.
 
   *Parameters*
     - **pipe** REQUIRED ``pipe`` A system pipe to write the output to.
@@ -232,6 +232,9 @@ Execute a command and while it runs write lines from the external process stdout
 
 ::
 
+  # Imports
+  from processrunner import ProcessRunner, writeOut
+
   # Logging files
   stdoutFile = open(workingDir+'/stdout.txt', 'a')
   stderrFile = open(workingDir+'/stderr.txt', 'a')
@@ -248,12 +251,12 @@ Execute a command and while it runs write lines from the external process stdout
 
   # Attach output mechanisms to the process's output pipes. These are handled asynchronously, so you can see the output while it is happening
   # Write to the console's stdout and stderr, with custom prefixes for each
-  proc.mapLines(WriteOut(pipe=sys.stdout, outputPrefix="validation-stdout> "), procPipeName="stdout")
-  proc.mapLines(WriteOut(pipe=sys.stderr, outputPrefix="validation-stderr> "), procPipeName="stderr")
+  proc.mapLines(writeOut(pipe=sys.stdout, outputPrefix="validation-stdout> "), procPipeName="stdout")
+  proc.mapLines(writeOut(pipe=sys.stderr, outputPrefix="validation-stderr> "), procPipeName="stderr")
 
   # Write to the log files, prepending each line with a date/time stamp
-  proc.mapLines(WriteOut(pipe=stdoutFile, outputPrefix=DateNote()), procPipeName="stdout")
-  proc.mapLines(WriteOut(pipe=stderrFile, outputPrefix=DateNote()), procPipeName="stderr")
+  proc.mapLines(writeOut(pipe=stdoutFile, outputPrefix=DateNote()), procPipeName="stdout")
+  proc.mapLines(writeOut(pipe=stderrFile, outputPrefix=DateNote()), procPipeName="stderr")
 
   # Block regular execution until the process finishes
   result = proc.wait().poll()

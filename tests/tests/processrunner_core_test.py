@@ -4,8 +4,9 @@ import sys
 import time
 import unittest
 
-# import context
+from tests.tests import context
 from processrunner import ProcessRunner
+
 
 '''
 # Watch the main queue fill and empty

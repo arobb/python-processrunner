@@ -2,12 +2,21 @@
 # https://gehrcke.de/2014/02/distributing-a-python-command-line-application/
 # ^ Structure help for overall project
 
-from setuptools import setup, find_packages
+from setuptools import setup
 # To use a consistent encoding
 from codecs import open
 from os import path
 
 here = path.abspath(path.dirname(__file__))
+
+# Version information
+try:
+    with open(path.join(here, 'VERSION'), encoding='utf-8') as vf:
+        version = vf.readline()
+except OSError:
+    # During development the VERSION file won't exist
+    from gitversion import get_git_version
+    version = get_git_version()
 
 # Get the long description from the README file
 with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
@@ -16,9 +25,8 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 setup(
       name='processrunner'
 
-      # Use versioning from git tags
-    , use_scm_version=True
-    , setup_requires=['setuptools_scm']
+      # Version
+    , version=version
 
     # Descriptions
     , description='Easily trigger and manage output from external processes.'
@@ -54,6 +62,8 @@ setup(
         # that you indicate whether you support Python 2, Python 3 or both.
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.7',
 
         # Other stuff
         'Environment :: Console',
@@ -65,11 +75,12 @@ setup(
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    #, packages=find_packages("processrunner")
+    # , packages=find_packages("processrunner")
+    , packages=["processrunner"]
 
     # Alternatively, if you want to distribute just a my_module.py, uncomment
     # this:
-    , py_modules=["processrunner"]
+    # , py_modules=["processrunner"]
 
     # List run-time dependencies here.  These will be installed by pip when
     # your project is installed. For an analysis of "install_requires" vs pip's

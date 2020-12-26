@@ -4,13 +4,16 @@
 #   registered for the client is incorrect (0, instead of 1). I have been unable to
 #   track down where this is coming from. AR June 2017
 #
+import logging
+import logging.config
 import os
 import sys
 import time
 import unittest
 
-# import context
-from processrunner import ProcessRunner, WriteOut
+from tests.tests import context
+from tests.tests.spinner import Spinner
+from processrunner import ProcessRunner, writeOut
 
 '''
 # Watch the main queue fill and empty
@@ -36,6 +39,8 @@ class ProcessRunnerTestCase(unittest.TestCase):
         sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
 
+        self.spinner = Spinner()
+
 
 class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
 
@@ -46,11 +51,12 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
             proc = ProcessRunner(command)
 
             # Key aspect
-            # When using the threading library, and WriteOut writes to a pipe, the return code
+            # When using the threading library, and writeOut writes to a pipe, the return code
             # doesn't always come back as expected
             # Isn't fixed even after the switch to multiprocessing
             with open("/dev/null", 'a') as devnull:
-                proc.mapLines(WriteOut(pipe=devnull, outputPrefix="validation-stdout> "), procPipeName="stdout")
+                proc.mapLines(writeOut(pipe=devnull, outputPrefix="test-output-script.py-stdout> "), procPipeName="stdout")
+                proc.mapLines(writeOut(pipe=sys.stderr, outputPrefix="test-output-script.py-stderr> "), procPipeName="stderr")
                 proc.wait()
                 result = proc.poll()
 
@@ -58,11 +64,16 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
                     print("")
                     print("Result output isn't 1!: '" + str(result) + "'")
                     print("Waiting another moment...")
-                    time.sleep(1)
-                    print("Next Poll(): " + str(proc.poll()))
+                    time.sleep(.1)
+                    result = proc.poll()
+                    print("Next Poll(): " + str(result))
 
-            proc.terminate()
+            # proc.terminate()
             proc.shutdown()
+
+            if result != 1:
+                errorText = "Result output isn't 1!: '{}'".format(result)
+                raise ValueError(errorText)
 
             return result
 
@@ -71,11 +82,15 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
         totalReturn = 0
         for i in range(runs):
             totalReturn += run()
+            self.spinner.spin()
 
         self.assertEqual(totalReturn, runs,
             'Bad return code found! Expecting ' + str(runs) + ' got ' + str(totalReturn))
 
 
 if __name__ == "__main__":
+    log_config_fname = os.path.dirname(__file__)+"/../content/default_logging_config.ini"
+    logging.config.fileConfig(fname=log_config_fname, disable_existing_loggers=False)
+
     suite = unittest.TestLoader().loadTestsFromTestCase(ProcessRunnerMaplinesTestCase)
     unittest.TextTestRunner(verbosity=2).run(suite)
