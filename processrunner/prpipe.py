@@ -117,7 +117,7 @@ class _PrPipe(object):
         """Checks whether the primary Queue or any clients' Queues are empty
 
         Returns True ONLY if ALL queues are empty if clientId is None
-        Returns True ONLY if both main queue and specfied client queue are empty
+        Returns True ONLY if both main queue and specified client queue are empty
         when clientId is provided
 
         Args:
@@ -184,7 +184,7 @@ class _PrPipe(object):
             queueProxy (QueueProxy): Proxy object to a Queue we should populate
 
         Returns:
-            string. The client's ID for acccess to this queue
+            string. The client's ID for access to this queue
 
         """
         # Make sure we don't re-use a clientId

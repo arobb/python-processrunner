@@ -82,7 +82,7 @@ class _Command(object):
 
 
     def getPipe(self, procPipeName):
-        """Retreive a _PrPipe manager instance by pipe name
+        """Retrieve a _PrPipe manager instance by pipe name
 
         Args:
             procPipeName (string): One of "stdout" or "stderr"

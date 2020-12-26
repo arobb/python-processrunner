@@ -37,7 +37,7 @@ def ExceptionHandler(error, message=None):
     if message is not None:
         log.error(message)
 
-    template = "An exception of type {0} occured. Error message:\n{1}"
+    template = "An exception of type {0} occurred. Error message:\n{1}"
     errmsg  = template.format(err_type, error_text)
     errmsg += "\n"
     log.error(errmsg)
