@@ -193,13 +193,37 @@ class ProcessRunner:
         return self.returncode
 
 
+    def join(self):
+        """Join any client processes, waiting for them to exit
+
+        .wait() calls this, so not necessary to use separately
+        """
+
+        # Join queue processes
+        timeout = 1
+        for procPipeName in list(self.pipeClientProcesses):
+            for clientId, clientProcess in list(self.pipeClientProcesses[procPipeName].items()):
+                self._log.debug("Joining " + procPipeName + " client " + text(clientId) + "...")
+                self.pipeClientProcesses[procPipeName][text(clientId)].join(timeout=timeout)
+                exitcode = self.pipeClientProcesses[procPipeName][text(clientId)].exitcode
+
+                # If a join timeout occurs, try again
+                while exitcode is None:
+                    self._log.info("Joining " + procPipeName + " client " + text(clientId) + "timed out")
+                    self.pipeClientProcesses[procPipeName][text(clientId)].join(timeout=timeout)
+                    exitcode = self.pipeClientProcesses[procPipeName][text(clientId)].exitcode
+
+
     def wait(self):
         """Block until the Popen process exits
 
         Does some extra checking to make sure the pipe managers have finished reading
+
+        #TODO: Check if this will deadlock if clients aren't finished reading (may only be internal maplines)
         """
         self.startMapLines()
         self.run.wait()
+        self.join()
 
         return self
 
@@ -215,10 +239,7 @@ class ProcessRunner:
                              to exit before raising an error
         """
         # Kill the main process
-        try:
-            self.terminateCommand()
-        except Exception as e:
-            raise e
+        self.terminateCommand()
 
         # Timeout in case the process doesn't terminate
         timer = timeoutMs/1000
