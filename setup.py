@@ -6,9 +6,17 @@ from setuptools import setup
 # To use a consistent encoding
 from codecs import open
 from os import path
-from gitversion import get_git_version
 
 here = path.abspath(path.dirname(__file__))
+
+# Version information
+try:
+    with open(path.join(here, 'VERSION'), encoding='utf-8') as vf:
+        version = vf.readline()
+except OSError:
+    # During development the VERSION file won't exist
+    from gitversion import get_git_version
+    version = get_git_version()
 
 # Get the long description from the README file
 with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
@@ -18,7 +26,7 @@ setup(
       name='processrunner'
 
       # Version
-    , version=get_git_version()
+    , version=version
 
     # Descriptions
     , description='Easily trigger and manage output from external processes.'

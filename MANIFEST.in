@@ -1,3 +1,4 @@
+include VERSION
 recursive-exclude tests *
 exclude *.sh
 exclude .*
