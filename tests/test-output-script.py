@@ -11,7 +11,7 @@ from datetime import datetime
 
 import tests.context
 from processrunner import ProcessRunner
-from processrunner import writeout
+from processrunner import writeOut
 
 
 class TestScript(object):
@@ -39,8 +39,8 @@ class TestScript(object):
             def __repr__(self):
                 return datetime.now().isoformat() + " "
 
-        self.stdout = writeout(pipe=sys.stdout, outputPrefix=DateNote())
-        self.stderr = writeout(pipe=sys.stderr, outputPrefix=DateNote())
+        self.stdout = writeOut(pipe=sys.stdout, outputPrefix=DateNote())
+        self.stderr = writeOut(pipe=sys.stderr, outputPrefix=DateNote())
 
         self.write(self.config['lines'])
         exit(int(self.config['return-code']))

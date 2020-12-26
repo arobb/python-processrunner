@@ -2,10 +2,10 @@
 import sys
 
 from .processrunner import ProcessRunner
-from .writeout import writeout
+from .writeout import writeOut
 
 
-def runcommand(command, outputPrefix="ProcessRunner> "):
+def runCommand(command, outputPrefix="ProcessRunner> "):
     """Easy invocation of a command with default IO streams
 
     Args:
@@ -18,8 +18,8 @@ def runcommand(command, outputPrefix="ProcessRunner> "):
         int The return code from the command
     """
     proc = ProcessRunner(command)
-    proc.mapLines(writeout(sys.stdout, outputPrefix=outputPrefix), procPipeName="stdout")
-    proc.mapLines(writeout(sys.stderr, outputPrefix=outputPrefix), procPipeName="stderr")
+    proc.mapLines(writeOut(sys.stdout, outputPrefix=outputPrefix), procPipeName="stdout")
+    proc.mapLines(writeOut(sys.stderr, outputPrefix=outputPrefix), procPipeName="stderr")
     proc.wait()
     returnCode = proc.poll()
 

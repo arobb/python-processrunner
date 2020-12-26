@@ -2,7 +2,7 @@
 from builtins import str as text
 
 
-def writeout(pipe, outputPrefix):
+def writeOut(pipe, outputPrefix):
     """Use with ProcessRunner.mapLines to easily write to your favorite pipe
        or handle
 
@@ -21,6 +21,6 @@ def writeout(pipe, outputPrefix):
             pipe.flush()
 
         except ValueError as e:
-            print("WriteOut caught odd error: " + text(e))
+            print("writeOut caught odd error: " + text(e))
 
     return func

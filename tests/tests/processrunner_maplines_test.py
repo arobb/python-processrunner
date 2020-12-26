@@ -13,7 +13,7 @@ import unittest
 
 from tests.tests import context
 from tests.tests.spinner import Spinner
-from processrunner import ProcessRunner, writeout
+from processrunner import ProcessRunner, writeOut
 
 '''
 # Watch the main queue fill and empty
@@ -51,12 +51,12 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
             proc = ProcessRunner(command)
 
             # Key aspect
-            # When using the threading library, and writeout writes to a pipe, the return code
+            # When using the threading library, and writeOut writes to a pipe, the return code
             # doesn't always come back as expected
             # Isn't fixed even after the switch to multiprocessing
             with open("/dev/null", 'a') as devnull:
-                proc.mapLines(writeout(pipe=devnull, outputPrefix="test-output-script.py-stdout> "), procPipeName="stdout")
-                proc.mapLines(writeout(pipe=sys.stderr, outputPrefix="test-output-script.py-stderr> "), procPipeName="stderr")
+                proc.mapLines(writeOut(pipe=devnull, outputPrefix="test-output-script.py-stdout> "), procPipeName="stdout")
+                proc.mapLines(writeOut(pipe=sys.stderr, outputPrefix="test-output-script.py-stderr> "), procPipeName="stderr")
                 proc.wait()
                 result = proc.poll()
 
