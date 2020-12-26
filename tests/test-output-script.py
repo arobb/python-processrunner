@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 '''
 '''
@@ -25,6 +25,11 @@ class TestScript(object):
         parser.add_argument('--block', required=False, nargs='?', dest='block', default='1', help='Number of lines to output between sleep. Defaults to 1')
         parser.add_argument('--return-code', required=False, nargs='?', dest='return-code', default='0', help='Code to return at completion')
         parser.add_argument('--sleep', required=False, nargs='?', dest='sleep', default='0', help='Sleep')
+        parser.add_argument('--port', required=False, nargs='?', dest='port', default=None, help='Stub for PyCharm debug compatibility')
+        parser.add_argument('--client', required=False, nargs='?', dest='client', default=None, help='Stub for PyCharm debug compatibility')
+        parser.add_argument('--file', required=False, nargs='?', dest='file', default=None, help='Stub for PyCharm debug compatibility')
+        parser.add_argument('--multiproc', required=False, dest='port', action='store_const', const=None, default=None,
+                            help='Stub for PyCharm debug compatibility')
         self.config = parser.parse_args().__dict__
 
 
