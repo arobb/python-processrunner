@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-import sys
-
-from .processrunner import ProcessRunner
-from .writeout import writeOut
+from .runcommand import runCommand
 
 
 def ssh(remoteAddress, remoteCommand, outputPrefix="ssh> "):
     """Easy invocation of SSH.
+
+    Note: Sets StrictHostKeyChecking to "no".
 
     Args:
         remoteAddress (string): IP or hostname for target system
@@ -20,13 +19,6 @@ def ssh(remoteAddress, remoteCommand, outputPrefix="ssh> "):
     """
     command = ["ssh", remoteAddress, "-t", "-o", "StrictHostKeyChecking=no", remoteCommand]
 
-    proc = ProcessRunner(command)
-    proc.mapLines(writeOut(sys.stdout, outputPrefix=outputPrefix), procPipeName="stdout")
-    proc.mapLines(writeOut(sys.stderr, outputPrefix=outputPrefix), procPipeName="stderr")
-    proc.wait()
-    returnCode = proc.poll()
-
-    proc.terminate()
-    proc.shutdown()
+    returnCode = runCommand(command, outputPrefix)
 
     return returnCode
