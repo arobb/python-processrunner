@@ -1,16 +1,15 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 from builtins import str as text
 from builtins import dict
 
 import logging
-import os
 import random
 import sys
 import time
 
 import multiprocessing
 from multiprocessing import Process
-from multiprocessing.managers import BaseManager
 
 try:  # Python 2.7
     from Queue import Empty
@@ -18,8 +17,9 @@ except ImportError:  # Python 3.x
     from queue import Empty
 
 from . import settings
-from .command import _Command
 from .which import which
+from .commandmanager import _CommandManager
+from .exceptionhandler import CommandNotFound
 
 
 # Global values when using ProcessRunner
@@ -42,18 +42,6 @@ def getActiveProcesses():
     return active
 
 
-# Configure a multiprocessing.BaseManager to allow for proxy access
-#   to the _Command class.
-# This allows us to decouple the main application process from
-#   the process that runs Popen and publishes output from Popen
-#   into the client queues.
-class _CommandManager(BaseManager): pass
-if sys.version_info[0] == 2:
-    _CommandManager.register(str("_Command"), _Command)  # MUST remain str()
-elif sys.version_info[0] == 3 :
-    _CommandManager.register("_Command", _Command)
-
-
 class ProcessRunner:
     """Easily execute external processes"""
     def __init__(self, command, cwd=None):
@@ -69,6 +57,7 @@ class ProcessRunner:
             cwd (string): Directory to change to before execution. Passed to subprocess.Popen
         """
         self._initializeLogging()
+        log = self._log
 
         # Shared settings
         settings.init()
@@ -77,6 +66,8 @@ class ProcessRunner:
         settings.config["ON_POSIX"] = 'posix' in sys.builtin_module_names
 
         # Verify the command is a list of strings
+        log.debug("Command as provided (commas separating parts): {}".format(", ".join(command)))
+        log.debug("Validating command list")
         if not isinstance(command, list):
             raise TypeError("ProcessRunner command must be a list of strings. "
                             + text(type(command)) + " given.")
@@ -104,10 +95,13 @@ class ProcessRunner:
         self.pipeClientProcesses = dict(stdout=dict(), stderr=dict())
 
         # Instantiate the Popen wrapper
-        self.runManager = _CommandManager()
+        log.debug("Instantiating the command execution manager subprocess")
+        authkey = text(settings.config["AUTHKEY"])
+        self.runManager = _CommandManager(None, authkey.encode())
         self.runManager.start()
 
         # Trigger execution
+        log.info("Starting the command")
         self.run = self.runManager._Command(command, cwd)
 
         # Register this ProcessRunner

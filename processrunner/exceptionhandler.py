@@ -3,13 +3,23 @@ import os
 import sys
 import traceback
 
-import settings
 import logging
 
 
 class SIGINTException(Exception):
     def __init__(self, value):
         self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+class CommandNotFound(OSError):
+    """Exception in case the command to execute isn't available"""
+    def __init__(self, value, command):
+        self.errno = 2
+        self.value = value
+        self.command = command
 
     def __str__(self):
         return repr(self.value)

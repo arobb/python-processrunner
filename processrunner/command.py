@@ -37,8 +37,6 @@ class _Command(object):
         # 3. File handles are closed automatically when the process exits
         ON_POSIX = settings.config["ON_POSIX"]
         self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd)
-        # with Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd) as proc:
-        #     self.proc = proc
 
         # Initialize readers to transfer output from the Popen pipes to local queues
         self.pipes = dict(stdout=_PrPipe(self.proc.stdout), stderr=_PrPipe(self.proc.stderr))
