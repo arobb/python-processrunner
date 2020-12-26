@@ -45,15 +45,6 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
     def test_processrunner_return_code_with_maplines(self):
         command = [self.sampleCommandPath, "--lines", "5", "--block", "1", "--sleep", "0", "--return-code", "1"]
 
-        # print("Pre-Start: Total: ", len(processrunner.PROCESSRUNNER_PROCESSES), ", Active: ", processrunner.getActiveProcesses())
-        # startProc = ProcessRunner(["lsof", "-p", str(os.getpid())])
-        # files = startProc.collectLines()
-        # print("Open files: ", len(files))
-        # pprint.pprint(files)
-        # startProc.terminate()
-        # startProc.shutdown()
-
-
         def run():
             proc = ProcessRunner(command)
 
