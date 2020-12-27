@@ -21,18 +21,14 @@ def runCommand(command, outputPrefix="ProcessRunner> ", returnAllContent=False):
         int The return code from the command (returnAllContent as False (default))
         tuple (return code, list of output) The return code and any output content (returnAllContent as True)
     """
-    proc = ProcessRunner(command)
+    with ProcessRunner(command) as proc:
+        if returnAllContent:
+            content = proc.collectLines()
+        else:
+            proc.mapLines(writeOut(sys.stdout, outputPrefix=outputPrefix), procPipeName="stdout")
+            proc.mapLines(writeOut(sys.stderr, outputPrefix=outputPrefix), procPipeName="stderr")
 
-    if returnAllContent:
-        content = proc.collectLines()
-    else:
-        proc.mapLines(writeOut(sys.stdout, outputPrefix=outputPrefix), procPipeName="stdout")
-        proc.mapLines(writeOut(sys.stderr, outputPrefix=outputPrefix), procPipeName="stderr")
-
-    returnCode = proc.wait().poll()
-
-    proc.terminate()
-    proc.shutdown()
+        returnCode = proc.wait().poll()
 
     if returnAllContent:
         return (returnCode, content)
