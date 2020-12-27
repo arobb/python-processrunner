@@ -29,9 +29,10 @@ import_list = [
       ["processrunner", "ProcessRunner"]
     , ["processrunner", "PROCESSRUNNER_PROCESSES"]
     , ["processrunner", "getActiveProcesses"]
-    , ["ssh"]
+    , ["ssh", "ssh"]
     , ["writeout", "writeOut"]
-    , ["writeout", "runCommand"]
+    , ["runcommand", "runCommand"]
+    , ["which", "which"]
 
     # Exceptions
     , ["exceptionhandler", "SIGINTException"]
