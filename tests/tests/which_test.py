@@ -9,7 +9,7 @@ from processrunner import which
 
 '''
 '''
-class ProcessRunnerCommandNotFoundTestCase(unittest.TestCase):
+class ProcessRunnerWhichTestCase(unittest.TestCase):
     def setUp(self):
         self.sampleCommandDir = os.path.dirname(__file__)
         sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
@@ -27,5 +27,5 @@ class ProcessRunnerCommandNotFoundTestCase(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    suite = unittest.TestLoader().loadTestsFromTestCase(ProcessRunnerCommandNotFoundTestCase)
+    suite = unittest.TestLoader().loadTestsFromTestCase(ProcessRunnerWhichTestCase)
     unittest.TextTestRunner(verbosity=2).run(suite)
