@@ -21,10 +21,10 @@ class TestScript(object):
         # Parse arguments
         #
         parser = argparse.ArgumentParser(usage='%(prog)s [options]', description='')
-        parser.add_argument('--lines', required=False, nargs='?', dest='lines', default='10', help='Number of lines to output. Defaults to 10')
+        parser.add_argument('--lines', required=False, nargs='?', dest='lines', default='10', help='Total number of lines to output. Defaults to 10')
         parser.add_argument('--block', required=False, nargs='?', dest='block', default='1', help='Number of lines to output between sleep. Defaults to 1')
         parser.add_argument('--return-code', required=False, nargs='?', dest='return-code', default='0', help='Code to return at completion')
-        parser.add_argument('--sleep', required=False, nargs='?', dest='sleep', default='0', help='Sleep')
+        parser.add_argument('--sleep', required=False, nargs='?', dest='sleep', default='0', help='Time to sleep in seconds (float), after the first "block"')
         parser.add_argument('--port', required=False, nargs='?', dest='port', default=None, help='Stub for PyCharm debug compatibility')
         parser.add_argument('--client', required=False, nargs='?', dest='client', default=None, help='Stub for PyCharm debug compatibility')
         parser.add_argument('--file', required=False, nargs='?', dest='file', default=None, help='Stub for PyCharm debug compatibility')
