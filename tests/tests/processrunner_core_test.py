@@ -38,11 +38,9 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
     def test_processrunner_correct_stdout_count(self):
         testLen = 10000
         command = [self.sampleCommandPath, "--lines", str(testLen), "--block", "1", "--sleep", "0"]
-        proc = ProcessRunner(command)
-        output = proc.collectLines()
-        result = proc.wait().poll()
-        proc.terminate()
-        proc.shutdown()
+        with ProcessRunner(command) as proc:
+            output = proc.collectLines()
+            result = proc.wait().poll()
 
         length = len(output)
 
