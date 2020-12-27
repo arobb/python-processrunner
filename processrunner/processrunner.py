@@ -111,6 +111,18 @@ class ProcessRunner:
         self.mapLinesStarted = False
 
 
+    def __enter__(self):
+        """Support 'with' syntax
+        """
+        return self
+
+
+    def __exit__(self, *exc_details):
+        """Support 'with' syntax
+        """
+        self.shutdown()
+
+
     def _initializeLogging(self):
         if hasattr(self, '_log'):
             if self._log is not None:
