@@ -5,7 +5,9 @@ import time
 import unittest
 
 from tests.tests import context
+from tests.tests.spinner import Spinner
 from processrunner import ProcessRunner
+from processrunner import runCommand
 
 
 '''
@@ -32,6 +34,8 @@ class ProcessRunnerTestCase(unittest.TestCase):
         sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
 
+        self.spinner = Spinner()
+
 
 class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
@@ -49,6 +53,23 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
         self.assertEqual(result, 0,
             'Test script return code not zero')
+
+    def test_processrunner_leak_check(self):
+        limit = 100
+        command = ["echo", "bonjour"]
+        openFilesCommand = ["lsof", "-p", str(os.getpid())]
+
+        openFilesStart = runCommand(openFilesCommand, returnAllContent=True)
+
+        for i in range(limit):
+            self.spinner.spin()
+            runCommand(command, returnAllContent=True)
+
+        openFilesEnd = runCommand(openFilesCommand, returnAllContent=True)
+
+        self.assertEqual(len(openFilesStart),
+                         len(openFilesEnd),
+                         "Open file count changed: Start {} to End {}".format(len(openFilesStart), len(openFilesEnd)))
 
 
 if __name__ == "__main__":
