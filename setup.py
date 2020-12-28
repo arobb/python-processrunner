@@ -13,7 +13,7 @@ here = path.abspath(path.dirname(__file__))
 try:
     with open(path.join(here, 'VERSION'), encoding='utf-8') as vf:
         version = vf.readline()
-except OSError:
+except IOError:
     # During development the VERSION file won't exist
     from gitversion import get_git_version
     version = get_git_version()
