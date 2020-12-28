@@ -63,7 +63,8 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
         for i in range(limit):
             self.spinner.spin()
-            runCommand(command, returnAllContent=True)
+            with ProcessRunner(command) as proc:
+                discard = proc.collectLines()
 
         openFilesEnd = runCommand(openFilesCommand, returnAllContent=True)
 
