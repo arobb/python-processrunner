@@ -4,6 +4,8 @@ import sys
 import time
 import unittest
 
+from tempfile import NamedTemporaryFile
+
 from tests.tests import context
 from tests.tests.spinner import Spinner
 from processrunner import ProcessRunner
@@ -71,6 +73,39 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         self.assertEqual(len(openFilesStart),
                          len(openFilesEnd),
                          "Open file count changed: Start {} to End {}".format(len(openFilesStart), len(openFilesEnd)))
+
+    def test_processrunner_onek_check_content(self):
+        textIn = "a" * 2**10  # "a" repeated 1,024 times
+
+        with NamedTemporaryFile() as tempFile:
+            tempFile.write(textIn.encode("utf-8"))
+            tempFile.flush()
+            command = ["cat", tempFile.name]
+
+            with ProcessRunner(command) as proc:
+                textOut = proc.collectLines()[0]
+
+        self.assertEqual(len(textIn),
+                         len(textOut),
+                         "Returned text not the same length: in {}, out {}".format(len(textIn), len(textOut)))
+
+    def test_processrunner_onem_check_content(self):
+        textIn = "a" * 2**20  # "a" repeated 1,048,576 times
+
+        with NamedTemporaryFile() as tempFile:
+            tempFile.write(textIn.encode("utf-8"))
+            tempFile.flush()
+            command = ["cat", tempFile.name]
+
+            with ProcessRunner(command) as proc:
+                textOut = proc.collectLines()[0]
+
+        self.assertEqual(len(textIn),
+                         len(textOut),
+                         "Returned text not the same length: in {}, out {}".format(len(textIn), len(textOut)))
+
+    def test_processrunner_multiline_check_content(self):
+        pass
 
 
 if __name__ == "__main__":
