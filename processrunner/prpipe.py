@@ -15,7 +15,7 @@ except ImportError:  # Python 3.x
     from queue import Empty
 
 from . import settings
-from .content import Content
+from .contentwrapper import ContentWrapper
 # from .exceptionhandler import EOF
 
 # Private class only intended to be used by ProcessRunner
@@ -84,7 +84,7 @@ class _PrPipe(object):
         with self.inboundQueueLock:
             for line in iter(out.readline, ''):
                 self._log.debug("Enqueing line of length {}".format(len(line)))
-                lineContent = Content(line)
+                lineContent = ContentWrapper(line)
                 queue.put(lineContent)
 
                 queueStatus = queue.empty()
@@ -116,7 +116,7 @@ class _PrPipe(object):
         #
         #         # End of a line
         #         self._log.debug("Enqueing line of length {}".format(len(line)))
-        #         lineContent = Content(line)
+        #         lineContent = ContentWrapper(line)
         #         queue.put(lineContent)
         #
         #         queueStatus = queue.empty()

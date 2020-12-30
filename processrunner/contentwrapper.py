@@ -4,7 +4,7 @@ Representation of content for a queue where the values may exceed the native pip
 """
 import tempfile
 
-class Content(object):
+class ContentWrapper(object):
     DIRECT = 0
     FILE = 1
 
@@ -12,7 +12,7 @@ class Content(object):
     THRESHOLD = 2**14  # 2**14 = 16,384
 
     def __get__(self, instance, owner):
-        if instance == "value" and self.type == Content.FILE:
+        if instance == "value" and self.type == ContentWrapper.FILE:
             return file.locationHandle.read()
         else:
             return getattr(self, instance)
@@ -20,13 +20,13 @@ class Content(object):
     def __set__(self, instance, val):
         if instance == "value":
             # Within the threshold size limit
-            if len(value.__repr__) < Content.THRESHOLD:
+            if len(value.__repr__) < ContentWrapper.THRESHOLD:
                 self.value = val
 
             # Larger than what a queue value can hold
             # due to pipe limits, store value in a temp file
             else:
-                self.type = Content.FILE
+                self.type = ContentWrapper.FILE
                 self.locationHandle = tempfile.SpooledTemporaryFile()
                 self.locationHandle.write(val)
 
@@ -41,7 +41,7 @@ class Content(object):
         return self.value
 
     def __init__(self, val):
-        self.type = Content.DIRECT
+        self.type = ContentWrapper.DIRECT
         self.value = val
 
         # Used only if this is stored in a file
