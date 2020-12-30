@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 from builtins import str as text
 from builtins import dict
 
 import logging
 import random
+import time
 
 from multiprocessing import Process, Lock, JoinableQueue
 
@@ -13,8 +15,11 @@ except ImportError:  # Python 3.x
     from queue import Empty
 
 from . import settings
+from .content import Content
+# from .exceptionhandler import EOF
 
 # Private class only intended to be used by ProcessRunner
+# Suffers from https://bryceboe.com/2011/01/28/the-python-multiprocessing-queue-and-large-objects/ with large objects
 class _PrPipe(object):
     """Custom pipe manager to capture the output of processes and store them in
        dedicated thread-safe queues.
@@ -31,6 +36,7 @@ class _PrPipe(object):
         self.id = ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
 
         self.queue = JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
+        self.inboundQueueLock = Lock()
 
         self.process = Process(target=self.enqueue_output, kwargs={"out":pipeHandle,"queue":self.queue})
         self.process.daemon = True
@@ -75,8 +81,61 @@ class _PrPipe(object):
             out (pipe): Pipe to read from
             queue (Queue): Queue to write to
         """
-        for line in iter(out.readline, b''):
-            queue.put(line.decode('utf-8'))
+        with self.inboundQueueLock:
+            for line in iter(out.readline, ''):
+                self._log.debug("Enqueing line of length {}".format(len(line)))
+                lineContent = Content(line)
+                queue.put(lineContent)
+
+                queueStatus = queue.empty()
+                self._log.debug("Queue reporting empty as '{}' after adding line of length {}".format(queueStatus,
+                                                                                                      len(lineContent)))
+
+                # Wait until the queue reports the added content
+                while queue.empty():
+                    time.sleep(0.001)
+
+                # If the queue originally reported that it was empty, report that it's now showing the new content
+                if queueStatus:
+                    self._log.debug("Queue now reporting the added content")
+
+
+        # with self.inboundQueueLock:
+        #     try:  # Read off the pipe
+        #         line = ""
+        #         while True:  # Read to the end of a line
+        #             newChar = out.read(2**10)
+        #
+        #             if len(newChar) == 0:
+        #                 raise EOF("End of pipe data")
+        #
+        #             line += newChar
+        #
+        #             if newChar[-1] == "\n":
+        #                 break
+        #
+        #         # End of a line
+        #         self._log.debug("Enqueing line of length {}".format(len(line)))
+        #         lineContent = Content(line)
+        #         queue.put(lineContent)
+        #
+        #         queueStatus = queue.empty()
+        #         self._log.debug("Queue reporting empty as '{}' after adding line of length {}".format(queueStatus,
+        #                                                                                               len(lineContent)))
+        #
+        #         # Wait until the queue reports the added content
+        #         while queue.empty():
+        #             time.sleep(0.001)
+        #
+        #         # If the queue originally reported that it was empty, report that it's now showing the new content
+        #         if queueStatus:
+        #             self._log.debug("Queue now reporting the added content")
+        #
+        #     except EOF:  # End of the file
+        #         pass
+
+
+        self._log.debug("Closing pipe handle")
         out.close()
 
 
@@ -87,19 +146,19 @@ class _PrPipe(object):
         Typically triggered by getLine or wait
 
         """
-        try:
-            while not self.queue.empty():
+        with self.inboundQueueLock:
+            try:
+                while not self.queue.empty():
 
-                with self.clientQueuesLock:
-                    line = self.queue.get_nowait()
-                    for q in list(self.clientQueues.values()):
-                        q.put(line)
+                    with self.clientQueuesLock:
+                        line = self.queue.get_nowait()
+                        for q in list(self.clientQueues.values()):
+                            q.put(line)
 
-                self.queue.task_done()
+                    self.queue.task_done()
 
-        except Empty:
-            pass
-
+            except Empty:
+                pass
 
     def getQueue(self, clientId):
         """Retrieve a client's Queue proxy object
@@ -126,17 +185,19 @@ class _PrPipe(object):
         Returns:
             bool
         """
-        if clientId is not None:
-            return self.queue.empty() \
-                and self.getQueue(clientId).empty()
+        with self.inboundQueueLock:
+            if clientId is not None:
+                empty = self.queue.empty() \
+                    and self.getQueue(clientId).empty()
 
-        else:
-            empty = self.queue.empty()
+            else:
+                empty = self.queue.empty()
 
-            with self.clientQueuesLock:
-                for q in list(self.clientQueues.values()):
-                    empty = empty and q.empty()
+                with self.clientQueuesLock:
+                    for q in list(self.clientQueues.values()):
+                        empty = empty and q.empty()
 
+            self._log.debug("Reporting queue empty: {}".format(empty))
             return empty
 
 
@@ -170,7 +231,9 @@ class _PrPipe(object):
         line = q.get_nowait()
         q.task_done()
 
-        return line
+        self._log.debug("Returning line")
+
+        return line.value
 
 
     def registerClientQueue(self, queueProxy):
