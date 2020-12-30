@@ -4,6 +4,7 @@
 #   registered for the client is incorrect (0, instead of 1). I have been unable to
 #   track down where this is coming from. AR June 2017
 #
+from __future__ import unicode_literals
 import logging
 import logging.config
 import os
@@ -89,8 +90,5 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
 
 
 if __name__ == "__main__":
-    log_config_fname = os.path.dirname(__file__)+"/../content/default_logging_config.ini"
-    logging.config.fileConfig(fname=log_config_fname, disable_existing_loggers=False)
-
     suite = unittest.TestLoader().loadTestsFromTestCase(ProcessRunnerMaplinesTestCase)
     unittest.TextTestRunner(verbosity=2).run(suite)
