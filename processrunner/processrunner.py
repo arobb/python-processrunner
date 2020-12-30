@@ -10,6 +10,7 @@ import time
 
 import multiprocessing
 from multiprocessing import Process
+from deprecated import deprecated
 
 try:  # Python 2.7
     from Queue import Empty
@@ -72,8 +73,13 @@ class ProcessRunner:
             raise TypeError("ProcessRunner command must be a list of strings. "
                             + text(type(command)) + " given.")
 
+        if sys.version_info[0] == 2:
+            stringComparator = basestring
+        elif sys.version_info[0] == 3:
+            stringComparator = str
+
         for i, param in enumerate(command):
-            if not isinstance(param, str):
+            if not isinstance(param, stringComparator):
                 raise TypeError("ProcessRunner command must be a list of strings. "
                                 +"Parameter {0} is {1}.".format(text(i), text(type(command))))
 
@@ -88,7 +94,7 @@ class ProcessRunner:
         self.command = command
 
         # Multiprocessing instance used to start process-safe Queues
-        self.manager = multiprocessing.Manager()
+        self.queueManager = multiprocessing.Manager()
 
         # Storage for multiprocessing.Queues started on behalf of clients
         self.pipeClients = dict(stdout=dict(), stderr=dict())
@@ -175,7 +181,7 @@ class ProcessRunner:
         Returns:
             bool
         """
-        return self.run.areAllQueuesEmpty
+        return self.run.areAllQueuesEmpty()
 
     def isAlive(self):
         """Check whether the Popen process reports alive
@@ -205,7 +211,11 @@ class ProcessRunner:
         return self.returncode
 
 
+    @deprecated
     def join(self):
+        self._join()
+
+    def _join(self):
         """Join any client processes, waiting for them to exit
 
         .wait() calls this, so not necessary to use separately
@@ -235,7 +245,7 @@ class ProcessRunner:
         """
         self.startMapLines()
         self.run.wait()
-        self.join()
+        self._join()
 
         return self
 
@@ -314,7 +324,7 @@ class ProcessRunner:
 
         Runs `terminate` in case it hasn't already been run"""
         self.terminate()
-        self.manager.shutdown()
+        self.queueManager.shutdown()
         self.runManager.shutdown()
 
         PROCESSRUNNER_PROCESSES.remove(self)
@@ -331,7 +341,7 @@ class ProcessRunner:
         Returns:
             string. Client's queue ID on this pipe
         """
-        q = self.manager.Queue(settings.config["MAX_QUEUE_LENGTH"])
+        q = self.queueManager.Queue(settings.config["MAX_QUEUE_LENGTH"])
         clientId = self.run.registerClientQueue(procPipeName, q)
         self.pipeClients[procPipeName][clientId] = q
 
@@ -470,17 +480,30 @@ class ProcessRunner:
         if procPipeName is None:
             for pipeName in list(self.pipeClients):
                 clientIds[pipeName] = self.registerForClientQueue(pipeName)
+                self._log.debug("Registered {} for client {}".format(pipeName, clientIds[pipeName]))
 
         else:
             clientIds[procPipeName] = self.registerForClientQueue(procPipeName)
+            self._log.debug("Registered {} for client {}".format(procPipeName, clientIds[procPipeName]))
 
         # Internal function to check whether we are done reading
         def checkComplete(self, clientIds):
             complete = True
-            complete = complete and not self.isAlive()
+
+            # Incorporate status of target process
+            # Target process alive: complete = True & !(True) == True & False == False
+            # Target process stopped: complete = True & !(False) == True & True == True
+            complete = complete and not self.isAlive() # True & !
 
             for pipeName, clientId in list(clientIds.items()):
+                # Check status of queues
+                # Target alive, queues w content: complete = False & False == False
+                # Target alive, queues empty: complete = False & True == False
+                # Target stopped, queues w content: complete = True & False == False
+                # Target stopped, queues empty: complete = True & True == True
                 complete = complete and self.isQueueEmpty(pipeName, clientId)
+
+            self._log.debug("Process complete status: {}".format(complete))
 
             return complete
 
