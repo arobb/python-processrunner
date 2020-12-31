@@ -86,16 +86,16 @@ setup(
     # your project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    , install_requires=['future', 'deprecated']
+    , install_requires=['future', 'kitchen', 'deprecated']
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
     # for example:
     # $ pip install -e .[dev,test]
-    # , extras_require={
-    #     'dev': ['check-manifest'],
-    #     'test': ['coverage'],
-    # }
+    , extras_require={
+        # 'dev': ['check-manifest'],
+        'test': ['mock'],
+    }
 
     # To provide executable scripts, use entry points in preference to the
     # "scripts" keyword. Entry points provide cross-platform support and allow
