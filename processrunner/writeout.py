@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
+
+from kitchen.text.converters import to_bytes
+from .kitchenpatch import getwriter
+
+from .exceptionhandler import ExceptionHandler
 
 
 def writeOut(pipe, outputPrefix):
     """Use with ProcessRunner.mapLines to easily write to your favorite pipe
-       or handle
+    or handle
 
     Args:
         pipe (pipe): A system pipe/file handle to write output to
@@ -17,11 +21,26 @@ def writeOut(pipe, outputPrefix):
     # TODO Validate the pipe somehow
 
     def func(line):
+        pipeWriter = getwriter("utf-8")(pipe)
+        output = "{}{}".format(outputPrefix, line)
+
         try:
-            pipe.write(text(outputPrefix)+text(line))
-            pipe.flush()
+            pipeWriter.write(output)
+
+        except TypeError:
+            # Shenanigans with unicode
+            try:
+                pipeWriter.write(to_bytes(output))
+            except TypeError:
+                pipe.write(str(output))
+            except Exception as e:
+                raise ExceptionHandler(e, "Crazy pipe writer stuff: {}".format(e))
 
         except ValueError as e:
-            print("writeOut caught odd error: " + text(e))
+            raise ExceptionHandler(e, "writeOut caught odd error: {}".format(e))
+
+        finally:
+            pipeWriter.flush()
+            pipe.flush()
 
     return func
