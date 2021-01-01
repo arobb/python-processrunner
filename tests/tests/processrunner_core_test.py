@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 import os
 import sys
 import time
@@ -43,7 +44,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
     def test_processrunner_correct_stdout_count(self):
         testLen = 10000
-        command = [self.sampleCommandPath, "--lines", str(testLen), "--block", "1", "--sleep", "0"]
+        command = [sys.executable, self.sampleCommandPath, "--lines", "{}".format(testLen), "--block", "1", "--sleep", "0"]
         with ProcessRunner(command) as proc:
             output = proc.collectLines()
             result = proc.wait().poll()
@@ -51,7 +52,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         length = len(output)
 
         self.assertEqual(length, testLen,
-            'Count of output lines unexpected: Expected '+str(testLen)+' got ' + str(length))
+            'Count of output lines unexpected: Expected {} got {}. Top 20:\n{}'.format(testLen, length, "\n".join(output[:20])))
 
         self.assertEqual(result, 0,
             'Test script return code not zero')
@@ -90,7 +91,8 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
                          "Returned text not the same length: in {}, out {}".format(len(textIn), len(textOut)))
 
     def test_processrunner_onem_check_content(self):
-        textIn = "a" * 2**20  # "a" repeated 1,048,576 times
+        """Checks the integrity of the inter-process locking mechanisms"""
+        textIn = "a" * 2**22  # a * 2**20 is "a" repeated 1,048,576 times, 22 is 4,194,304
 
         with NamedTemporaryFile() as tempFile:
             tempFile.write(textIn.encode("utf-8"))
@@ -98,14 +100,49 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             command = ["cat", tempFile.name]
 
             with ProcessRunner(command) as proc:
-                textOut = proc.collectLines()[0]
+                textOut = proc.collectLines()[0]  # < Sometimes fails with index out of range
 
         self.assertEqual(len(textIn),
                          len(textOut),
                          "Returned text not the same length: in {}, out {}".format(len(textIn), len(textOut)))
 
-    def test_processrunner_multiline_check_content(self):
-        pass
+    def test_processrunner_check_emoji_content(self):
+        textIn = "😂" * 10
+        command = ["echo", textIn]
+
+        with ProcessRunner(command) as proc:
+            textOut = proc.collectLines()[0]
+
+        self.assertEqual(textIn,
+                         textOut,
+                         "Returned unicode text is not equivalent: In {}, Out {}".format(textIn, textOut))
+
+    def test_processrunner_check_onem_emoji_content(self):
+        """Checks the integrity of the inter-process locking mechanisms with unicode text"""
+        textIn = "😂" * 2**22  # a * 2**20 is "a" repeated 1,048,576 times, 22 is 4,194,304
+
+        with NamedTemporaryFile() as tempFile:
+            tempFile.write(textIn.encode("utf-8"))
+            tempFile.flush()
+            command = ["cat", tempFile.name]
+
+            with ProcessRunner(command) as proc:
+                textOut = proc.collectLines()[0]  # < Sometimes fails with index out of range
+
+        self.assertEqual(len(textIn),
+                         len(textOut),
+                         "Returned text not the same length: in {}, out {}".format(len(textIn), len(textOut)))
+
+    def test_processrunner_check_mixed_ascii_emoji_content(self):
+        textIn = "a😂" * 10
+        command = ["echo", textIn]
+
+        with ProcessRunner(command) as proc:
+            textOut = proc.collectLines()[0]
+
+        self.assertEqual(textIn,
+                         textOut,
+                         "Returned unicode text is not equivalent: In {}, Out {}".format(textIn, textOut))
 
 
 if __name__ == "__main__":
