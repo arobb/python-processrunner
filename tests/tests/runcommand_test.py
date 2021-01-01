@@ -6,6 +6,14 @@ import sys
 import time
 import unittest
 
+# See commented test below for details
+# from io import StringIO
+#
+# try:
+#     from unittest.mock import patch
+# except ImportError:
+#     from mock import patch
+
 from tests.tests import context
 from processrunner import runCommand
 
@@ -108,6 +116,38 @@ class ProcessRunnerRunCommandTestCase(unittest.TestCase):
         self.assertEqual(textIn,
                          textOut,
                          "Returned text not the same: in '{}', out '{}'".format(textIn, textOut))
+
+    def test_processrunner_runCommand_emoji_check_content(self):
+        textIn = "😂" * 10
+        command = ["echo", textIn]
+        returnData = runCommand(command, returnAllContent=True)
+        textOut = returnData[1][0]
+
+        self.assertEqual(textIn,
+                         textOut,
+                         "Returned text not the same: in '{}', out '{}'".format(textIn, textOut))
+
+    # No idea how to get this to run reliably. Patching stdout with multiprocessing appears... difficult
+    # @patch('sys.stdout', new_callable=StringIO)
+    # def test_processrunner_runCommand_emoji_check_stdout(self, mock_stdout):
+    #     textIn = "😂" * 10
+    #     command = ["echo", textIn]
+    #
+    #     outputPrefix = "Unicode Validation> "
+    #     validationText = outputPrefix + textIn
+    #     returnCodeOut = runCommand(command, outputPrefix=outputPrefix, returnAllContent=False)
+    #
+    #     self.assertEqual(0,  # echo standard return is 0
+    #                      returnCodeOut,
+    #                      "Something went wrong checking for unicode compliance, return code not zero: {}".format(
+    #                          returnCodeOut
+    #                      ))
+    #
+    #     mock_stdout.seek(0)
+    #     textOut = mock_stdout.getvalue()
+    #     self.assertEqual(validationText,
+    #                      textOut,
+    #                      "Console text not the same: input {}, output {}".format(validationText, textOut))
 
 
 if __name__ == "__main__":
