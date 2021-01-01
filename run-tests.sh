@@ -42,6 +42,12 @@ for i in ${runlist[@]}; do
     echo "Running tests for $i"
     venv_dir="$DIR/venv-$i"
     source $venv_dir/bin/activate
-    python -m unittest discover -p '*_test.py'
+
+    if [ "$1" == "" ]; then
+      python -m unittest discover -p '*_test.py'
+    else
+      python -m unittest discover -p "$1"
+    fi
+
     deactivate
 done

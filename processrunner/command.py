@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 from builtins import str as text
 from builtins import dict
 from subprocess import PIPE, Popen
 
+import codecs
 import logging
 import time
 
@@ -39,7 +41,9 @@ class _Command(object):
         self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd)
 
         # Initialize readers to transfer output from the Popen pipes to local queues
-        self.pipes = dict(stdout=_PrPipe(self.proc.stdout), stderr=_PrPipe(self.proc.stderr))
+        wrappedStdout = codecs.getreader("utf-8")(self.proc.stdout)
+        wrappedStderr = codecs.getreader("utf-8")(self.proc.stderr)
+        self.pipes = dict(stdout=_PrPipe(wrappedStdout), stderr=_PrPipe(wrappedStderr))
 
 
     def _initializeLogging(self):

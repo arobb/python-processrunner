@@ -13,7 +13,7 @@ here = path.abspath(path.dirname(__file__))
 try:
     with open(path.join(here, 'VERSION'), encoding='utf-8') as vf:
         version = vf.readline()
-except OSError:
+except IOError:
     # During development the VERSION file won't exist
     from gitversion import get_git_version
     version = get_git_version()
@@ -86,16 +86,16 @@ setup(
     # your project is installed. For an analysis of "install_requires" vs pip's
     # requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    , install_requires=['future']
+    , install_requires=['future', 'kitchen', 'deprecated']
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). You can install these using the following syntax,
     # for example:
     # $ pip install -e .[dev,test]
-    # , extras_require={
-    #     'dev': ['check-manifest'],
-    #     'test': ['coverage'],
-    # }
+    , extras_require={
+        # 'dev': ['check-manifest'],
+        'test': ['mock'],
+    }
 
     # To provide executable scripts, use entry points in preference to the
     # "scripts" keyword. Entry points provide cross-platform support and allow

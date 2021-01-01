@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 import os
 import sys
 import traceback
@@ -25,27 +26,34 @@ class CommandNotFound(OSError):
         return repr(self.value)
 
 
-def ExceptionHandler(error, message=None):
-    exc_type, exc_obj, exc_tb = sys.exc_info()
-    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-    err_type = type(error).__name__
-    error_text = str(error)
+class ExceptionHandler(Exception):
+    def __repr__(self):
+        return self.errmsg
 
-    log = logging.getLogger(__name__)
-    log.addHandler(logging.NullHandler())
+    def __str__(self):
+        return self.errmsg
 
-    if message is not None:
-        log.error(message)
+    def __init__(self, error, message=None):
+        self.exc_type, self.exc_obj, self.exc_tb = sys.exc_info()
+        fname = os.path.split(self.exc_tb.tb_frame.f_code.co_filename)[1]
+        self.err_type = type(error).__name__
+        self.error_text = str(error)
 
-    template = "An exception of type {0} occurred. Error message:\n{1}"
-    errmsg  = template.format(err_type, error_text)
-    errmsg += "\n"
-    log.error(errmsg)
+        log = logging.getLogger(__name__)
+        log.addHandler(logging.NullHandler())
 
-    errargmsg  = err_type+" arguments:\n{0!r}".format(type(error).__name__, error.args)
-    errargmsg += "\n"
-    log.error(errargmsg)
+        if message is not None:
+            log.error(message)
 
-    tbmsg  = err_type+" traceback (most recent call last):"
-    log.error(tbmsg)
-    traceback.print_tb(exc_tb)
+        template = "An exception of type {0} occurred. Error message:\n{1}"
+        self.errmsg  = template.format(self.err_type, self.error_text)
+        self.errmsg += "\n"
+        log.error(self.errmsg)
+
+        errargmsg  = self.err_type+" arguments:\n{0!r}".format(type(error).__name__, error.args)
+        errargmsg += "\n"
+        log.error(errargmsg)
+
+        tbmsg  = self.err_type+" traceback (most recent call last):"
+        log.error(tbmsg)
+        traceback.print_tb(self.exc_tb)
