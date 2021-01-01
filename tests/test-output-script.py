@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 '''
 '''
-
+from __future__ import unicode_literals
 import argparse
 import os
 import sys
 import time
 from datetime import datetime
 
-import tests.context
+from tests import context
 from processrunner import ProcessRunner
 from processrunner import writeOut
 
@@ -34,10 +34,12 @@ class TestScript(object):
 
 
         class DateNote:
-            def init(self):
+            def __init__(self):
                 pass
             def __repr__(self):
                 return datetime.now().isoformat() + " "
+            def __add__(self, other):
+                return self.__repr__() + other
 
         self.stdout = writeOut(pipe=sys.stdout, outputPrefix=DateNote())
         self.stderr = writeOut(pipe=sys.stderr, outputPrefix=DateNote())
@@ -49,7 +51,7 @@ class TestScript(object):
         count = int(count)
 
         for i in range(0, count):
-            self.stdout("Line: "+str(i+1)+" of "+str(count)+"\n")
+            self.stdout("Line: {} of {}\n".format(i+1, count))
 
             if (i+1) % int(self.config['block']) == 0:
                 time.sleep(float(self.config['sleep']))
