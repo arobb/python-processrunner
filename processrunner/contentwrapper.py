@@ -23,6 +23,15 @@ class ContentWrapper(object):
     """
     Representation of content for a queue where the values may exceed the
     native pipe size.
+
+    Store data with
+        cw = ContentWrapper("My text data")
+        cw.value = "Updated text data"
+
+    Access data with
+        print("My data: {}".format(cw.value))
+
+    TODO: Manage value updates that cross THRESHOLD
     """
     TYPES = enum(
         'DIRECT',
