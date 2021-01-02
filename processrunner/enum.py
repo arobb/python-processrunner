@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
+"""
+An implementation of the Enum data type
+"""
 from __future__ import unicode_literals
+
 
 # For use with deployment statuses
 # https://stackoverflow.com/a/1695250

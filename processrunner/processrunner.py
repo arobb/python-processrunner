@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+from past.builtins import basestring
 from builtins import str as text
 from builtins import dict
 
@@ -22,9 +23,9 @@ from .which import which
 from .commandmanager import _CommandManager
 from .exceptionhandler import CommandNotFound
 
-
 # Global values when using ProcessRunner
 PROCESSRUNNER_PROCESSES = []  # Holding list for instances of ProcessRunner
+
 
 def getActiveProcesses():
     """Retrieve a list of running processes started by ProcessRunner
@@ -45,29 +46,35 @@ def getActiveProcesses():
 
 class ProcessRunner:
     """Easily execute external processes"""
+
     def __init__(self, command, cwd=None):
         """Easily execute external processes
 
         Can be used in a blocking or non-blocking manner
-        Uses separate processes to monitor stdout and stderr of started processes
+        Uses separate processes to monitor stdout and stderr of started
+        processes
 
         Args:
-            command (list): A list of strings, making up the command to pass to Popen
+            command (list): A list of strings, making up the command to pass
+                to Popen
 
         Kwargs:
-            cwd (string): Directory to change to before execution. Passed to subprocess.Popen
+            cwd (string): Directory to change to before execution. Passed to
+                subprocess.Popen
         """
         self._initializeLogging()
         log = self._log
 
         # Shared settings
         settings.init()
-        settings.config["AUTHKEY"] = ''.join([random.choice('0123456789ABCDEF') for x in range(256)])
+        settings.config["AUTHKEY"] = ''.join([random.choice('0123456789ABCDEF')
+                                              for x in range(256)])
         settings.config["MAX_QUEUE_LENGTH"] = 0  # Maximum length for Queues
         settings.config["ON_POSIX"] = 'posix' in sys.builtin_module_names
 
         # Verify the command is a list of strings
-        log.debug("Command as provided (commas separating parts): {}".format(", ".join(command)))
+        log.debug("Command as provided (commas separating parts): {}"
+                  .format(", ".join(command)))
         log.debug("Validating command list")
         if not isinstance(command, list):
             raise TypeError("ProcessRunner command must be a list of strings. "
@@ -80,12 +87,15 @@ class ProcessRunner:
 
         for i, param in enumerate(command):
             if not isinstance(param, stringComparator):
-                raise TypeError("ProcessRunner command must be a list of strings. "
-                                +"Parameter {0} is {1}.".format(text(i), text(type(command))))
+                raise TypeError(
+                    "ProcessRunner command must be a list of strings. "
+                    + "Parameter {0} is {1}.".format(text(i),
+                                                     text(type(command))))
 
         # Verify the command exists
         if which(command[0]) is None:
-            raise CommandNotFound(command[0] + " not found or not executable", command[0])
+            raise CommandNotFound(command[0] + " not found or not executable",
+                                  command[0])
 
         # Place to store return code in case we stop the child process
         self.returncode = None
@@ -116,18 +126,15 @@ class ProcessRunner:
         # Whether we've started the child mapLines processes
         self.mapLinesStarted = False
 
-
     def __enter__(self):
         """Support 'with' syntax
         """
         return self
 
-
     def __exit__(self, *exc_details):
         """Support 'with' syntax
         """
         self.shutdown()
-
 
     def _initializeLogging(self):
         if hasattr(self, '_log'):
@@ -138,10 +145,8 @@ class ProcessRunner:
         self._log = logging.getLogger(__name__)
         self.addLoggingHandler(logging.NullHandler())
 
-
     def addLoggingHandler(self, handler):
         self._log.addHandler(handler)
-
 
     def getCommand(self):
         """Retrieve the command list
@@ -151,12 +156,10 @@ class ProcessRunner:
         """
         return self.command
 
-
     def publish(self):
         """Force publishing of any pending messages on attached pipes
         """
         self.run.publish()
-
 
     def isQueueEmpty(self, procPipeName, clientId):
         """Check whether the pipe manager queues report empty
@@ -170,13 +173,12 @@ class ProcessRunner:
         """
         return self.run.isQueueEmpty(procPipeName, clientId)
 
-
     def areAllQueuesEmpty(self):
         """Check that all queues are empty
 
-        A bit dangerous to use, will block if any client has stopped pulling from
-        their queue. Better to use isQueueEmpty() for the dedicated client queue.
-        Sometimes (especially externally) that's not possible.
+        A bit dangerous to use, will block if any client has stopped pulling
+        from their queue. Better to use isQueueEmpty() for the dedicated client
+        queue. Sometimes (especially externally) that's not possible.
 
         Returns:
             bool
@@ -189,12 +191,7 @@ class ProcessRunner:
         Returns:
             bool
         """
-        try:
-            status = self.run.isAlive()
-        except:
-            status = False
-        return status
-
+        return self.run.isAlive()
 
     def poll(self):
         """Invoke the subprocess.Popen.poll() method
@@ -207,9 +204,6 @@ class ProcessRunner:
             return self.returncode
         except Exception as e:
             raise e
-
-        return self.returncode
-
 
     @deprecated
     def join(self):
@@ -224,24 +218,35 @@ class ProcessRunner:
         # Join queue processes
         timeout = 1
         for procPipeName in list(self.pipeClientProcesses):
-            for clientId, clientProcess in list(self.pipeClientProcesses[procPipeName].items()):
-                self._log.debug("Joining " + procPipeName + " client " + text(clientId) + "...")
-                self.pipeClientProcesses[procPipeName][text(clientId)].join(timeout=timeout)
-                exitcode = self.pipeClientProcesses[procPipeName][text(clientId)].exitcode
+            for clientId, clientProcess in \
+                    list(self.pipeClientProcesses[procPipeName].items()):
+                self._log.debug(
+                    "Joining {} client {}...".format(procPipeName,
+                                                     text(clientId)))
+                self.pipeClientProcesses[procPipeName][text(clientId)]\
+                    .join(timeout=timeout)
+                exitcode = \
+                    self.pipeClientProcesses[procPipeName][text(clientId)]\
+                        .exitcode
 
                 # If a join timeout occurs, try again
                 while exitcode is None:
-                    self._log.info("Joining " + procPipeName + " client " + text(clientId) + "timed out")
-                    self.pipeClientProcesses[procPipeName][text(clientId)].join(timeout=timeout)
-                    exitcode = self.pipeClientProcesses[procPipeName][text(clientId)].exitcode
-
+                    self._log.info("Joining {} client {} timed out".
+                                   format(procPipeName, text(clientId)))
+                    self.pipeClientProcesses[procPipeName][text(clientId)]\
+                        .join(timeout=timeout)
+                    exitcode = \
+                        self.pipeClientProcesses[procPipeName][text(clientId)]\
+                            .exitcode
 
     def wait(self):
         """Block until the Popen process exits
 
-        Does some extra checking to make sure the pipe managers have finished reading
+        Does some extra checking to make sure the pipe managers have finished
+        reading
 
-        #TODO: Check if this will deadlock if clients aren't finished reading (may only be internal maplines)
+        TODO: Check if this will deadlock if clients aren't finished reading
+        (may only be internal maplines)
         """
         self.startMapLines()
         self.run.wait()
@@ -249,22 +254,22 @@ class ProcessRunner:
 
         return self
 
-
     def terminate(self, timeoutMs=3000):
         """Terminate both the target process (the command) and reader queues.
 
-        Use terminate to gracefully stop the target process (the command) and readers once you're done reading.
-        Use `shutdown` if you are just trying to clean up, as it will trigger `terminate`.
+        Use terminate to gracefully stop the target process (the command) and
+        readers once you're done reading. Use `shutdown` if you are just
+        trying to clean up, as it will trigger `terminate`.
 
         Args:
-            timeoutMs (int): Milliseconds terminate should wait for main process
-                             to exit before raising an error
+            timeoutMs (int): Milliseconds terminate should wait for main
+                process to exit before raising an error
         """
         # Kill the main process
         self.terminateCommand()
 
         # Timeout in case the process doesn't terminate
-        timer = timeoutMs/1000
+        timer = timeoutMs / 1000
         interval = 0.1
         while timer > 0 and self.isAlive():
             timer = timer - interval
@@ -276,7 +281,6 @@ class ProcessRunner:
         # Kill the queues
         self._terminateQueues()
 
-
     def _terminateQueues(self):
         """Clean up straggling processes that might still be running.
 
@@ -284,18 +288,19 @@ class ProcessRunner:
         """
         # Clean up readers
         for procPipeName in list(self.pipeClientProcesses):
-            for clientId, clientProcess in list(self.pipeClientProcesses[procPipeName].items()):
+            for clientId, clientProcess in \
+                    list(self.pipeClientProcesses[procPipeName].items()):
                 # Close any remaining client readers
                 try:
-                    self.pipeClientProcesses[procPipeName][text(clientId)].terminate()
+                    self.pipeClientProcesses[procPipeName][text(clientId)] \
+                        .terminate()
                 except Exception as e:
                     raise Exception(
-                        "Exception closing "+procPipeName+" client "\
-                        +text(clientId)+": "+text(e)+ \
+                        "Exception closing " + procPipeName + " client "
+                        + text(clientId) + ": " + text(e) +
                         ". Did you trigger startMapLines first?")
                 # Remove references to client queues
                 self.unRegisterClientQueue(procPipeName, clientId)
-
 
     def terminateCommand(self):
         """Send SIGTERM to the main process (the command)"""
@@ -303,7 +308,8 @@ class ProcessRunner:
             self.run.terminate()
 
         except OSError as e:
-            # 3 is "No such process", which probably means the process is already terminated
+            # 3 is "No such process", which probably means the process is
+            # already terminated
             if e.errno == 3:
                 pass
             else:
@@ -312,15 +318,13 @@ class ProcessRunner:
         except Exception as e:
             raise e
 
-
     def killCommand(self):
         """Send SIGKILL to the main process (the command)"""
         return self.run.kill()
 
-
     def shutdown(self):
-        """Shutdown the process managers. Run after verifying terminate/kill has
-        destroyed any child processes
+        """Shutdown the process managers. Run after verifying terminate/kill
+        has destroyed any child processes
 
         Runs `terminate` in case it hasn't already been run"""
         self.terminate()
@@ -328,7 +332,6 @@ class ProcessRunner:
         self.runManager.shutdown()
 
         PROCESSRUNNER_PROCESSES.remove(self)
-
 
     def registerForClientQueue(self, procPipeName):
         """Register to get a client queue on a pipe manager
@@ -347,11 +350,11 @@ class ProcessRunner:
 
         return clientId
 
-
     def unRegisterClientQueue(self, procPipeName, clientId):
         """Unregister a client queue from a pipe manager
 
-        Keeps other clients from waiting on other clients that will never be read
+        Keeps other clients from waiting on other clients that will never be
+        read.
 
         Args:
             procPipeName (string): One of "stdout" or "stderr"
@@ -364,7 +367,6 @@ class ProcessRunner:
 
         if text(clientId) in self.pipeClientProcesses:
             self.pipeClientProcesses.pop(text(clientId))
-
 
     def getLineFromPipe(self, procPipeName, clientId):
         """Retrieve a line from a pipe manager
@@ -384,28 +386,27 @@ class ProcessRunner:
         line = self.run.getLineFromPipe(procPipeName, clientId)
         return line
 
-
     def destructiveAudit(self):
         """Force one line of output each from attached pipes
 
-        Used for debugging issues that might relate to data stuck in the queues.
-        Triggers the pipes' destructiveAudit function which prints the last
-        line of the queue or an 'empty' message.
+        Used for debugging issues that might relate to data stuck in the
+        queues.  Triggers the pipes' destructiveAudit function which prints
+        the last line of the queue or an 'empty' message.
         """
         return self.run.destructiveAudit()
-
 
     def mapLines(self, func, procPipeName):
         """Run a function against each line presented by one pipe manager
 
         Returns a reference to a dict that can be used to monitor the status of
-        the function. When the process is dead, the queues are empty, and all lines
-        are processed, the dict will be updated. This can be used as a blocking
-        mechanism by functions invoking mapLines.
+        the function. When the process is dead, the queues are empty, and all
+        lines are processed, the dict will be updated. This can be used as a
+        blocking mechanism by functions invoking mapLines.
         Status dict format: {"complete":bool}
 
         Args:
-            func (function): A function that takes one parameter, the line from the pipe
+            func (function): A function that takes one parameter, the line
+                from the pipe
             procPipeName (string): One of "stdout" or "stderr"
 
         Returns:
@@ -420,7 +421,7 @@ class ProcessRunner:
             try:
                 # Continue while there MIGHT be data to read
                 while run.isAlive() \
-                  or not run.isQueueEmpty(procPipeName, clientId):
+                        or not run.isQueueEmpty(procPipeName, clientId):
                     self._log.debug("might be data to read in " + procPipeName)
 
                     # Continue while we KNOW THERE IS data to read
@@ -438,14 +439,18 @@ class ProcessRunner:
             finally:
                 pass
 
-        client = Process(target=doWrite, kwargs=dict(run=self.run, func=func, status=status, clientId=clientId, procPipeName=procPipeName))
+        client = Process(target=doWrite, kwargs=dict(run=self.run,
+                                                     func=func,
+                                                     status=status,
+                                                     clientId=clientId,
+                                                     procPipeName=procPipeName)
+                         )
         client.daemon = True
 
         # Store the process so it can potentially be re-joined
         self.pipeClientProcesses[procPipeName][text(clientId)] = client
 
         return status
-
 
     # Eliminates a potential race condition in mapLines if two are started on
     #   the same pipe
@@ -457,15 +462,15 @@ class ProcessRunner:
 
         Triggered by wait(), so almost never needs to be called directly.
         """
-        if self.mapLinesStarted == False:
+        if self.mapLinesStarted is False:
             self.mapLinesStarted = True
             for pipeClientProcesses in list(self.pipeClientProcesses.values()):
                 for client in list(pipeClientProcesses.values()):
                     client.start()
 
-
     def collectLines(self, procPipeName=None):
-        """Retrieve output lines as a list for one or all pipes from the process
+        """Retrieve output lines as a list for one or all pipes from the
+        process
 
         Kwargs:
             procPipeName (string): One of "stdout" or "stderr"
@@ -480,27 +485,35 @@ class ProcessRunner:
         if procPipeName is None:
             for pipeName in list(self.pipeClients):
                 clientIds[pipeName] = self.registerForClientQueue(pipeName)
-                self._log.debug("Registered {} for client {}".format(pipeName, clientIds[pipeName]))
+                self._log.debug("Registered {} for client {}"
+                                .format(pipeName, clientIds[pipeName]))
 
         else:
             clientIds[procPipeName] = self.registerForClientQueue(procPipeName)
-            self._log.debug("Registered {} for client {}".format(procPipeName, clientIds[procPipeName]))
+            self._log.debug("Registered {} for client {}"
+                            .format(procPipeName, clientIds[procPipeName]))
 
         # Internal function to check whether we are done reading
         def checkComplete(self, clientIds):
             complete = True
 
             # Incorporate status of target process
-            # Target process alive: complete = True & !(True) == True & False == False
-            # Target process stopped: complete = True & !(False) == True & True == True
-            complete = complete and not self.isAlive() # True & !
+            # Target process alive:
+            #   complete = True & !(True) == True & False == False
+            # Target process stopped:
+            #   complete = True & !(False) == True & True == True
+            complete = complete and not self.isAlive()  # True & !
 
             for pipeName, clientId in list(clientIds.items()):
                 # Check status of queues
-                # Target alive, queues w content: complete = False & False == False
-                # Target alive, queues empty: complete = False & True == False
-                # Target stopped, queues w content: complete = True & False == False
-                # Target stopped, queues empty: complete = True & True == True
+                # Target alive, queues w content:
+                #   complete = False & False == False
+                # Target alive, queues empty:
+                #   complete = False & True == False
+                # Target stopped, queues w content:
+                #   complete = True & False == False
+                # Target stopped, queues empty:
+                #   complete = True & True == True
                 complete = complete and self.isQueueEmpty(pipeName, clientId)
 
             self._log.debug("Process complete status: {}".format(complete))
@@ -512,7 +525,8 @@ class ProcessRunner:
             for pipeName, clientId in list(clientIds.items()):
                 while True:
                     try:
-                        line = self.getLineFromPipe(pipeName, clientId).rstrip('\n')
+                        line = self.getLineFromPipe(pipeName, clientId) \
+                            .rstrip('\n')
                         outputList.append(line)
                     except Empty:
                         break

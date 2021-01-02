@@ -1,16 +1,20 @@
 # -*- coding: utf-8 -*-
+"""Patched version of PyPi Kitchen's Python 3 getwriter function. Removes
+extraneous newlines."""
 import codecs
 
 from kitchen.text.converters import to_bytes
 
+
 def getwriter(encoding):
-    '''Return a :class:`codecs.StreamWriter` that resists tracing back.
+    """Return a :class:`codecs.StreamWriter` that resists tracing back.
 
     :arg encoding: Encoding to use for transforming :class:`str` strings
         into byte :class:`bytes`.
     :rtype: :class:`codecs.StreamWriter`
-    :returns: :class:`~codecs.StreamWriter` that you can instantiate to wrap output
-        streams to automatically translate :class:`str` strings into :attr:`encoding`.
+    :returns: :class:`~codecs.StreamWriter` that you can instantiate to wrap
+        output streams to automatically translate :class:`str` strings into
+        :attr:`encoding`.
 
     This is a reimplemetation of :func:`codecs.getwriter` that returns
     a :class:`~codecs.StreamWriter` that resists issuing tracebacks.  The
@@ -55,14 +59,14 @@ def getwriter(encoding):
         python wiki.
 
     .. versionadded:: kitchen 0.2a2, API: kitchen.text 1.1.0
-    '''
+    """
     class _StreamWriter(codecs.StreamWriter):
         # :W0223: We don't need to implement all methods of StreamWriter.
         #   This is not the actual class that gets used but a replacement for
         #   the actual class.
         # :C0111: We're implementing an API from the stdlib.  Just point
         #   people at that documentation instead of writing docstrings here.
-        #pylint:disable-msg=W0223,C0111
+        # pylint:disable-msg=W0223,C0111
         def __init__(self, stream, errors='replace'):
             codecs.StreamWriter.__init__(self, stream, errors)
 

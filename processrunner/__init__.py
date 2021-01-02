@@ -1,8 +1,10 @@
 def simpleLoader(moduleName, name=None):
     """ Import a named object from a module in the context of this function.
-    Source: https://www.oreilly.com/library/view/python-cookbook/0596001673/ch15s04.html
+    Source:
+    https://www.oreilly.com/library/view/python-cookbook/0596001673/5s04.html
 
-    moduleName: Dot-notation module name; use alone if importing a package or non-qualified module
+    moduleName: Dot-notation module name; use alone if importing a package or
+    non-qualified module
     name: Object or submodule to import from moduleName
     """
     try:
@@ -15,32 +17,34 @@ def simpleLoader(moduleName, name=None):
     except KeyError:
         return None
 
-def safe_list_get (l, idx):
+
+def safe_list_get(inList, idx):
     """https://stackoverflow.com/a/5125636"""
     try:
-        return l[idx]
+        return inList[idx]
     except IndexError:
         return None
+
 
 # [moduleName, name, asName]
 import_list = [
 
     # Core modules
-      ["processrunner", "ProcessRunner"]
-    , ["processrunner", "PROCESSRUNNER_PROCESSES"]
-    , ["processrunner", "getActiveProcesses"]
-    , ["ssh", "ssh"]
-    , ["writeout", "writeOut"]
-    , ["runcommand", "runCommand"]
-    , ["which", "which"]
+    ["processrunner", "ProcessRunner"],
+    ["processrunner", "PROCESSRUNNER_PROCESSES"],
+    ["processrunner", "getActiveProcesses"],
+    ["ssh", "ssh"],
+    ["writeout", "writeOut"],
+    ["runcommand", "runCommand"],
+    ["which", "which"],
 
     # Exceptions
-    , ["exceptionhandler", "SIGINTException"]
-    , ["exceptionhandler", "CommandNotFound"]
+    ["exceptionhandler", "SIGINTException"],
+    ["exceptionhandler", "CommandNotFound"],
 
     # Deprecated as of 2.3, removed in 3.0
-    , ["writeout", "writeOut", "WriteOut"]
-    , ["writeout", "runCommand", "RunCommand"]
+    ["writeout", "writeOut", "WriteOut"],
+    ["writeout", "runCommand", "RunCommand"]
 ]
 
 for entry in import_list:

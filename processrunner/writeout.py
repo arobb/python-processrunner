@@ -34,10 +34,12 @@ def writeOut(pipe, outputPrefix):
             except TypeError:
                 pipe.write(str(output))
             except Exception as e:
-                raise ExceptionHandler(e, "Crazy pipe writer stuff: {}".format(e))
+                raise ExceptionHandler(e,
+                                       "Crazy pipe writer stuff: {}".format(e))
 
         except ValueError as e:
-            raise ExceptionHandler(e, "writeOut caught odd error: {}".format(e))
+            raise ExceptionHandler(e,
+                                   "writeOut caught odd error: {}".format(e))
 
         finally:
             pipeWriter.flush()
