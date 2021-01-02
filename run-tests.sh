@@ -29,7 +29,7 @@ for i in ${runlist[@]}; do
 
       # Install dev package
       source $venv_dir/bin/activate
-      pip install -e $DIR[test]
+      pip install -e $DIR[dev,test]
       deactivate
     else
       echo "Yes"
@@ -44,9 +44,11 @@ for i in ${runlist[@]}; do
     source $venv_dir/bin/activate
 
     if [ "$1" == "" ]; then
-      python -m unittest discover -p '*_test.py'
+      # python -m unittest discover -p '*_test.py'
+      pytest
     else
-      python -m unittest discover -p "$1"
+      # python -m unittest discover -p "$1"
+      pytest "$DIR/test/test/$1"
     fi
 
     deactivate

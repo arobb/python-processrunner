@@ -93,8 +93,8 @@ setup(
     # for example:
     # $ pip install -e .[dev,test]
     , extras_require={
-        # 'dev': ['check-manifest'],
-        'test': ['mock'],
+        'dev': ['pylama', 'check-manifest'],
+        'test': ['mock', 'pygments', 'pytest'],
     }
 
     # To provide executable scripts, use entry points in preference to the
