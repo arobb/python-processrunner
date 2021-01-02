@@ -6,6 +6,7 @@ from multiprocessing.managers import BaseManager
 
 from .command import _Command
 
+
 # Configure a multiprocessing.BaseManager to allow for proxy access
 #   to the _Command class.
 # This allows us to decouple the main application process from
@@ -14,8 +15,9 @@ from .command import _Command
 class _CommandManager(BaseManager):
     pass
 
+
 if sys.version_info[0] == 2:
     _CommandManager.register(str("_Command"), _Command)  # MUST remain str()
 
-elif sys.version_info[0] == 3 :
+elif sys.version_info[0] == 3:
     _CommandManager.register("_Command", _Command)

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
 from builtins import dict
 from subprocess import PIPE, Popen
 
@@ -27,7 +26,8 @@ class _Command(object):
             command (list): List of strings to pass to subprocess.Popen
 
         Kwargs:
-            cwd (string): Directory to change to before execution. Passed to subprocess.Popen
+            cwd (string): Directory to change to before execution. Passed to
+            subprocess.Popen
         """
         self._initializeLogging()
 
@@ -38,13 +38,14 @@ class _Command(object):
         # 2. Output from stdout and stderr buffered per line
         # 3. File handles are closed automatically when the process exits
         ON_POSIX = settings.config["ON_POSIX"]
-        self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1, close_fds=ON_POSIX, cwd=cwd)
+        self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1,
+                          close_fds=ON_POSIX, cwd=cwd)
 
-        # Initialize readers to transfer output from the Popen pipes to local queues
+        # Init readers to transfer output from the Popen pipes to local queues
         wrappedStdout = codecs.getreader("utf-8")(self.proc.stdout)
         wrappedStderr = codecs.getreader("utf-8")(self.proc.stderr)
-        self.pipes = dict(stdout=_PrPipe(wrappedStdout), stderr=_PrPipe(wrappedStderr))
-
+        self.pipes = dict(stdout=_PrPipe(wrappedStdout),
+                          stderr=_PrPipe(wrappedStderr))
 
     def _initializeLogging(self):
         if hasattr(self, '_log'):
@@ -55,10 +56,8 @@ class _Command(object):
         self._log = logging.getLogger(__name__)
         self.addLoggingHandler(logging.NullHandler())
 
-
     def addLoggingHandler(self, handler):
         self._log.addHandler(handler)
-
 
     def get(self, parameter):
         """Retrieve the value of a local parameter
@@ -75,7 +74,6 @@ class _Command(object):
         """
         return getattr(self, parameter)
 
-
     def getCommand(self):
         """Retrieve the command that Popen is running
 
@@ -83,7 +81,6 @@ class _Command(object):
             list. List of strings
         """
         return self.command
-
 
     def getPipe(self, procPipeName):
         """Retrieve a _PrPipe manager instance by pipe name
@@ -102,15 +99,14 @@ class _Command(object):
 
         return self.pipes[procPipeName]
 
-
     def publish(self):
         """Force publishing of any pending messages"""
         for pipe in list(self.pipes.values()):
             pipe.publish()
 
-
     def isQueueEmpty(self, procPipeName, clientId):
-        """Check whether the _PrPipe queues report empty for a given pipe and client
+        """Check whether the _PrPipe queues report empty for a given pipe and
+        client
 
         Args:
             clientId (string): ID of the client queue
@@ -121,14 +117,13 @@ class _Command(object):
         """
         return self.getPipe(procPipeName).isEmpty(clientId)
 
-
     @property
     def areAllQueuesEmpty(self):
         """Check that all queues are empty
 
-        A bit dangerous to use, will block if any client has stopped pulling from
-        their queue. Better to use isQueueEmpty() for the dedicated client queue.
-        Sometimes (especially externally) that's not possible.
+        A bit dangerous to use, will block if any client has stopped pulling
+        from their queue. Better to use isQueueEmpty() for the dedicated
+        client queue. Sometimes (especially externally) that's not possible.
 
         Returns:
             bool
@@ -136,11 +131,12 @@ class _Command(object):
         empty = True
 
         for pipename, pipe in list(self.pipes.items()):
-            self._log.info(pipename + " is " + ("empty" if pipe.isEmpty() == True else "not empty"))
+            self._log.info(pipename + " is " +
+                           ("empty" if
+                            pipe.isEmpty() is True else "not empty"))
             empty = empty and pipe.isEmpty()
 
         return empty
-
 
     def isAlive(self):
         """Check whether the Popen process reports alive
@@ -152,7 +148,6 @@ class _Command(object):
 
         return state
 
-
     def poll(self):
         """Invoke the subprocess.Popen.poll() method
 
@@ -161,17 +156,17 @@ class _Command(object):
         """
         return self.proc.poll()
 
-
     def wait(self):
         """Block until the process exits
 
-        Does some extra checking to make sure the pipe managers have finished reading
+        Does some extra checking to make sure the pipe managers have finished
+        reading
 
         Returns:
             None
         """
         def isAliveLocal():
-            self.publish() # Force down any unprocessed messages
+            self.publish()  # Force down any unprocessed messages
             alive = False
             for pipe in list(self.pipes.values()):
                 alive = alive or pipe.is_alive()
@@ -182,7 +177,6 @@ class _Command(object):
 
         return None
 
-
     def terminate(self):
         """Proxy call for Popen.terminate
 
@@ -191,7 +185,6 @@ class _Command(object):
         """
         return self.proc.terminate()
 
-
     def kill(self):
         """Proxy call for Popen.kill
 
@@ -199,7 +192,6 @@ class _Command(object):
             None
         """
         return self.proc.kill()
-
 
     def registerClientQueue(self, procPipeName, queueProxy):
         """Register to get a client queue on a pipe manager
@@ -211,11 +203,10 @@ class _Command(object):
             queueProxy (queueProxy): Proxy object to a Queue we should populate
 
         Returns:
-            string. Client queue ID (unique only when combined with procPipeName)
+            string Client queue ID, unique only when combined with procPipeName
 
         """
         return self.getPipe(procPipeName).registerClientQueue(queueProxy)
-
 
     def unRegisterClientQueue(self, procPipeName, clientId):
         """Unregister a client queue from a pipe manager
@@ -232,7 +223,6 @@ class _Command(object):
         self.getPipe(procPipeName).unRegisterClientQueue(clientId)
 
         return None
-
 
     def getLineFromPipe(self, procPipeName, clientId):
         """Retrieve a line from a pipe manager
@@ -252,13 +242,12 @@ class _Command(object):
         line = self.getPipe(procPipeName).getLine(clientId)
         return line
 
-
     def destructiveAudit(self):
         """Force one line of output each from attached pipes
 
-        Used for debugging issues that might relate to data stuck in the queues.
-        Triggers the pipes' destructiveAudit function which prints the last
-        line of the queue or an 'empty' message.
+        Used for debugging issues that might relate to data stuck in the
+        queues. Triggers the pipes' destructiveAudit function which prints
+        the last line of the queue or an 'empty' message.
         """
         for pipe in list(self.pipes.values()):
             pipe.destructiveAudit()

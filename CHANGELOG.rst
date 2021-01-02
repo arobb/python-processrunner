@@ -2,6 +2,21 @@ Change Log
 ==========
 Documented changes to the project.
 
+Version 2.4.0
+-------------
+Fix a race condition that would sometimes lead to incorrect return codes and
+other unacceptable behavior. Add a class to manage large pipe content.
+Multitude of internal changes to address issues found by new unit tests.
+
+Still expects pipe contents to be discrete new-line broken text, but can handle
+arbitrarily large contents by buffering larger lines to a temp file.
+(Relatively low threshold, meant to prevent deadlocks when transferring data
+over OS pipes.)
+
+Adds unit tests. Changes to better match PEP syntax recommendations.
+
+Dependencies now include `deprecate` and `kitchen`.
+
 Version 2.3.0
 -------------
 Fix a memory leak when running multiple instances of ProcessRunner. Refactor

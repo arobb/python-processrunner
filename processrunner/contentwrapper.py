@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Representation of content for a queue where the values may exceed the native pipe size.
+Representation of content for a queue where the values may exceed the native
+pipe size.
 """
 import os
 import sys
@@ -12,20 +13,38 @@ from .enum import enum
 from .kitchenpatch import getwriter
 from kitchen.text.converters import to_bytes
 
+# Py2 uses "file" as the base class for IO
+# Used for an isinstance comparison
 if sys.version_info[0] == 3:
-    from io import IOBase
+    from io import IOBase as file
+
 
 class ContentWrapper(object):
+    """
+    Representation of content for a queue where the values may exceed the
+    native pipe size.
+
+    Store data with
+        cw = ContentWrapper("My text data")
+        cw.value = "Updated text data"
+
+    Access data with
+        print("My data: {}".format(cw.value))
+
+    TODO: Manage value updates that cross THRESHOLD
+    """
     TYPES = enum(
-          'DIRECT'
-        , 'FILE')
+        'DIRECT',
+        'FILE')
 
     # Need to figure out a way to do this automatically
     THRESHOLD = 2**14  # 2**14 = 16,384
 
     def __getattr__(self, attr):
         """When necessary pull the 'value' from a buffer file"""
-        if attr == "value" and object.__getattribute__(self, "type") == ContentWrapper.TYPES.FILE:
+        if attr == "value" \
+                and object.__getattribute__(self, "type") == \
+                ContentWrapper.TYPES.FILE:
             return self._getValueFromFile()
         else:
             return object.__getattribute__(self, attr)
@@ -41,7 +60,8 @@ class ContentWrapper(object):
             # due to pipe limits, store value in a temp file
             else:
                 object.__setattr__(self, "type", ContentWrapper.TYPES.FILE)
-                object.__setattr__(self, "locationHandle", tempfile.NamedTemporaryFile(delete=False))
+                object.__setattr__(self, "locationHandle",
+                                   tempfile.NamedTemporaryFile(delete=False))
                 handle = object.__getattribute__(self, "locationHandle")
                 object.__setattr__(self, "locationName", handle.name)
                 writer = getwriter("utf-8")(handle)
@@ -54,13 +74,8 @@ class ContentWrapper(object):
 
     def __getstate__(self):
         """Being Pickled"""
-        if sys.version_info[0] == 2:
-            if isinstance(self.locationHandle, file):
-                self.locationHandle.close()
-
-        elif sys.version_info[0] == 3:
-            if isinstance(self.locationHandle, IOBase):
-                self.locationHandle.close()
+        if isinstance(self.locationHandle, file):
+            self.locationHandle.close()
 
         state = self.__dict__.copy()
         del state['locationHandle']
@@ -82,13 +97,8 @@ class ContentWrapper(object):
 
     def __del__(self):
         """When used, close any open file handles on object destruction"""
-        if sys.version_info[0] == 2:
-            if isinstance(self.locationHandle, file):
-                self.locationHandle.close()
-
-        elif sys.version_info[0] == 3:
-            if isinstance(self.locationHandle, IOBase):
-                self.locationHandle.close()
+        if isinstance(self.locationHandle, file):
+            self.locationHandle.close()
 
         # Delete any files on disk
         if self.locationName is not None and not self.beingSerialized:

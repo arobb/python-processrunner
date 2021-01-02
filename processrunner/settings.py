@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-# Holder for shared Configuration
+"""Holder for shared Configuration"""
+
 
 def init():
+    """Holder for shared Configuration"""
     global config
 
     try:
