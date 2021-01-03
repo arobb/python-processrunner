@@ -9,7 +9,7 @@ import time
 
 from . import settings
 from .prpipe import _PrPipe
-
+from .exceptionhandler import AlreadyStarted
 
 # Private class only intended to be used by ProcessRunner
 class _Command(object):
@@ -20,7 +20,7 @@ class _Command(object):
     which provides proxy access to class methods
 
     """
-    def __init__(self, command, cwd=None):
+    def __init__(self, command, cwd=None, autostart=True):
         """
         Args:
             command (list): List of strings to pass to subprocess.Popen
@@ -31,21 +31,15 @@ class _Command(object):
         """
         self._initializeLogging()
 
+        self.started = False
         self.command = command
+        self.cwd = cwd
+        self.proc = None  # Will hold a Popen instance
+        self.pipes = {}  # Will hold a dict of _PrPipe
 
-        # Start the process with subprocess.Popen
-        # 1. stdout and stderr are captured via pipes
-        # 2. Output from stdout and stderr buffered per line
-        # 3. File handles are closed automatically when the process exits
-        ON_POSIX = settings.config["ON_POSIX"]
-        self.proc = Popen(self.command, stdout=PIPE, stderr=PIPE, bufsize=1,
-                          close_fds=ON_POSIX, cwd=cwd)
-
-        # Init readers to transfer output from the Popen pipes to local queues
-        wrappedStdout = codecs.getreader("utf-8")(self.proc.stdout)
-        wrappedStderr = codecs.getreader("utf-8")(self.proc.stderr)
-        self.pipes = dict(stdout=_PrPipe(wrappedStdout),
-                          stderr=_PrPipe(wrappedStderr))
+        # Start running if we would like
+        if autostart:
+            self.start()
 
     def _initializeLogging(self):
         if hasattr(self, '_log'):
@@ -82,6 +76,35 @@ class _Command(object):
         """
         return self.command
 
+    def start(self):
+        """Begin running the target process"""
+        if self.started:
+            message = "_Command.start called after process has started"
+            self._log.info(message)
+            raise AlreadyStarted(message)
+        else:
+            self.started = True
+
+        # Start the process with subprocess.Popen
+        # 1. stdout and stderr are captured via pipes
+        # 2. Output from stdout and stderr buffered per line
+        # 3. File handles are closed automatically when the process exits
+        ON_POSIX = settings.config["ON_POSIX"]
+        self.proc = Popen(self.command,
+                          stdout=PIPE,
+                          stderr=PIPE,
+                          bufsize=1,
+                          close_fds=ON_POSIX,
+                          cwd=self.cwd)
+
+        # Init readers to transfer output from the Popen pipes to local queues
+        wrappedStdout = codecs.getreader("utf-8")(self.proc.stdout)
+        wrappedStderr = codecs.getreader("utf-8")(self.proc.stderr)
+        self.pipes["stdout"] = _PrPipe(wrappedStdout)
+        self.pipes["stderr"] = _PrPipe(wrappedStderr)
+
+        return self.started
+
     def getPipe(self, procPipeName):
         """Retrieve a _PrPipe manager instance by pipe name
 
@@ -117,7 +140,6 @@ class _Command(object):
         """
         return self.getPipe(procPipeName).isEmpty(clientId)
 
-    @property
     def areAllQueuesEmpty(self):
         """Check that all queues are empty
 
@@ -144,7 +166,10 @@ class _Command(object):
         Returns:
             bool
         """
-        state = True if self.proc.poll() is None else False
+        if self.proc is None:
+            state = False
+        else:
+            state = True if self.proc.poll() is None else False
 
         return state
 

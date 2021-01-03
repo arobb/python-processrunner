@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Easily execute external processes"""
 from __future__ import unicode_literals
 from past.builtins import basestring
 from builtins import str as text
@@ -22,6 +23,8 @@ from . import settings
 from .which import which
 from .commandmanager import _CommandManager
 from .exceptionhandler import CommandNotFound
+from .exceptionhandler import NotStarted
+from .exceptionhandler import ExceptionHandler
 
 # Global values when using ProcessRunner
 PROCESSRUNNER_PROCESSES = []  # Holding list for instances of ProcessRunner
@@ -47,7 +50,7 @@ def getActiveProcesses():
 class ProcessRunner:
     """Easily execute external processes"""
 
-    def __init__(self, command, cwd=None):
+    def __init__(self, command, cwd=None, autostart=True):
         """Easily execute external processes
 
         Can be used in a blocking or non-blocking manner
@@ -102,6 +105,9 @@ class ProcessRunner:
 
         # Process to run
         self.command = command
+        self.cwd = cwd
+        self.autostart = autostart
+        self.run = None  # Will hold the proxied _Command instance
 
         # Multiprocessing instance used to start process-safe Queues
         self.queueManager = multiprocessing.Manager()
@@ -113,12 +119,14 @@ class ProcessRunner:
         # Instantiate the Popen wrapper
         log.debug("Instantiating the command execution manager subprocess")
         authkey = text(settings.config["AUTHKEY"])
-        self.runManager = _CommandManager(None, authkey.encode())
+        self.runManager = _CommandManager(authkey=authkey.encode())
         self.runManager.start()
 
-        # Trigger execution
+        # Trigger execution if autostart is True
         log.info("Starting the command")
-        self.run = self.runManager._Command(command, cwd)
+        self.run = self.runManager._Command(self.command,
+                                            self.cwd,
+                                            self.autostart)
 
         # Register this ProcessRunner
         PROCESSRUNNER_PROCESSES.append(self)
@@ -146,6 +154,7 @@ class ProcessRunner:
         self.addLoggingHandler(logging.NullHandler())
 
     def addLoggingHandler(self, handler):
+        """Pass-through for Logging's addHandler method"""
         self._log.addHandler(handler)
 
     def getCommand(self):
@@ -155,6 +164,12 @@ class ProcessRunner:
             list. The list of strings passed to Popen
         """
         return self.command
+
+    def start(self):
+        """Pass through to _Command.start
+
+        :raises exceptionhandler.AlreadyStarted"""
+        return self.run.start()
 
     def publish(self):
         """Force publishing of any pending messages on attached pipes
@@ -315,7 +330,12 @@ class ProcessRunner:
             else:
                 raise e
 
+        except AttributeError as e:
+            self._log.warning("ProcessRunner.terminateCommand called without "
+                              "the target process being instantiated")
+
         except Exception as e:
+            ExceptionHandler(e)
             raise e
 
     def killCommand(self):
@@ -479,6 +499,11 @@ class ProcessRunner:
             list. List of strings that are the output lines from selected pipes
         """
         outputList = []
+
+        if not self.run.get("started"):
+            raise NotStarted("Target command hasn't started yet; please call "
+                             "ProcessRunner.start() to start the target "
+                             "process")
 
         # Register for client IDs from all appropriate pipe managers
         clientIds = dict()
