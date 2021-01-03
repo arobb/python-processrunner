@@ -94,7 +94,7 @@ setup(
     # $ pip install -e .[dev,test]
     , extras_require={
         'dev': ['pylama', 'check-manifest'],
-        'test': ['mock', 'pygments', 'pytest'],
+        'test': ['mock', 'pygments', 'pytest', 'parameterized'],
     }
 
     # To provide executable scripts, use entry points in preference to the
