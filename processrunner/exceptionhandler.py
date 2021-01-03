@@ -29,6 +29,32 @@ class CommandNotFound(OSError):
         return repr(self.value)
 
 
+class AlreadyStarted(Exception):
+    """Raise if _Command.start is called after the process is started"""
+    def __init__(self, value=""):
+        """Arguments must be option to prevent triggering
+        https://bugs.python.org/issue15440 when raised in _Command"""
+        self.errno = 3
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+class NotStarted(Exception):
+    """Raise if _Command.start hasn't been called, but a method has been
+    called that depends on the target process running.
+    """
+    def __init__(self, value=""):
+        """Arguments must be option to prevent triggering
+        https://bugs.python.org/issue15440 when raised in _Command"""
+        self.errno = 4
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
 class ExceptionHandler(Exception):
     """Exception management
 

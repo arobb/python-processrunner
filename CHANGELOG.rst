@@ -2,6 +2,16 @@ Change Log
 ==========
 Documented changes to the project.
 
+Version 2.4.0+
+--------------
+- Internal ContentWrapper class manage value changes across ContentWrapper.THRESHOLD
+- Internal ContentWrapper class add created and updated timestamps to enable sorting
+- Ability to sort combined outputs (stdout+stderr) by created timestamps
+- Simple DAG creation across ProcessRunner instances
+- Add discrete "start" functionality to ProcessRunner to manage when the external process begins
+- Create diagram of internal ProcessRunner execution model
+- Create a performance baseline compared to shell pipe actions
+
 Version 2.4.0
 -------------
 Fix a race condition that would sometimes lead to incorrect return codes and

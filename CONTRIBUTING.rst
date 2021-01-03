@@ -21,7 +21,7 @@ Configure Twine and the PyPi RC file at `~/.pypirc` .
 
     # Use twine upload --repository processrunner dist/*
     [processrunner]
-    # repository = https://pypi.python.org/pypi
+    repository = https://upload.pypi.org/legacy/
     username = __token__
     password = <your token>
 
@@ -50,10 +50,10 @@ the web site.
 
 .. code-block:: bash
 
-    twine upload --repository test-processrunner dist/*
+    python -m twine upload --repository test-processrunner dist/*
 
 6. Then push to PyPi's official repo.
 
 .. code-block:: bash
 
-    twine upload --repository processrunner dist/*
+    python -m twine upload --repository processrunner dist/*

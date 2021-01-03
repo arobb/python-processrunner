@@ -13,7 +13,8 @@ from .command import _Command
 #   the process that runs Popen and publishes output from Popen
 #   into the client queues.
 class _CommandManager(BaseManager):
-    pass
+    def __init__(self, address=None, authkey=None):
+        super(_CommandManager, self).__init__(address, authkey)
 
 
 if sys.version_info[0] == 2:
