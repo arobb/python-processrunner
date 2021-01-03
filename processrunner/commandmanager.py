@@ -14,7 +14,7 @@ from .command import _Command
 #   into the client queues.
 class _CommandManager(BaseManager):
     def __init__(self, address=None, authkey=None):
-        super(_CommandManager, self).__init__(address, authkey)
+        super(type(self), self).__init__(address, authkey)
 
 
 if sys.version_info[0] == 2:
