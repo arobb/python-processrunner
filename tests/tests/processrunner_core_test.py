@@ -5,12 +5,15 @@ import sys
 import time
 import unittest
 
+from parameterized import parameterized
 from tempfile import NamedTemporaryFile
 
 from tests.tests import context
 from tests.tests.spinner import Spinner
 from processrunner import ProcessRunner
 from processrunner import runCommand
+from processrunner.exceptionhandler import AlreadyStarted
+from processrunner.exceptionhandler import NotStarted
 
 
 '''
@@ -42,20 +45,83 @@ class ProcessRunnerTestCase(unittest.TestCase):
 
 class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
-    def test_processrunner_correct_stdout_count(self):
+    @parameterized.expand([
+        [True, False],  # Autostart, no need to manually trigger start
+        [False, True]   # Trigger manual start at A
+    ])
+    def test_processrunner_correct_stdout_count(self, autostart, manualstart):
         testLen = 10000
         command = [sys.executable, self.sampleCommandPath, "--lines", "{}".format(testLen), "--block", "1", "--sleep", "0"]
-        with ProcessRunner(command) as proc:
+        with ProcessRunner(command, autostart=autostart) as proc:
+            # Verify start works when placed before collectLines
+            if manualstart:
+                proc.start()
+
+            # Store process output
             output = proc.collectLines()
             result = proc.wait().poll()
 
         length = len(output)
 
-        self.assertEqual(length, testLen,
-            'Count of output lines unexpected: Expected {} got {}. Top 20:\n{}'.format(testLen, length, "\n".join(output[:20])))
+        # Verify the count of lines is identical
+        message = 'Count of output lines unexpected: Expected ' \
+                  '{} got {}. Top 20:\n{}'.format(testLen,
+                                                  length,
+                                                  "\n".join(output[:20]))
+        self.assertEqual(length, testLen, message)
 
-        self.assertEqual(result, 0,
-            'Test script return code not zero')
+        # Verify the test script exit code was 0
+        self.assertEqual(result, 0, 'Test script return code not zero')
+
+    def test_processrunner_collectLines_raise_NotStarted(self):
+        """Ensure NotStarted is raised when using collectLines before
+        start()"""
+        command = ["echo", "bonjour"]
+        with self.assertRaises(NotStarted):
+            with ProcessRunner(command, autostart=False) as proc:
+                output = proc.collectLines()
+
+    @parameterized.expand([
+        [True, True, False],
+        [False, True, True]
+    ])
+    def test_processrunner_second_start_raises_exception_once(self,
+                                                              autostart,
+                                                              start_a,
+                                                              start_b):
+        command = ["echo", "bonjour"]
+        with ProcessRunner(command, autostart=autostart) as proc:
+            # Duplicate proc.starts()
+            with self.assertRaises(AlreadyStarted):
+                if start_a:
+                    proc.start()
+                if start_b:
+                    proc.start()
+
+    @parameterized.expand([
+        [True],
+        [False]
+    ])
+    def test_processrunner_second_start_raises_exception_repeated(self,
+                                                                  autostart):
+        testLen = 5
+        command = ["echo", "bonjour"]
+        with ProcessRunner(command, autostart=autostart) as proc:
+            # Trigger the process to start if it wasn't done by autostart
+            if not autostart:
+                proc.start()
+
+            # Run start N times
+            # Duplicate proc.starts()
+            for i in range(0, testLen):
+                try:
+                    proc.start()
+                except AlreadyStarted:
+                    pass
+
+            # Trigger one more that is the test
+            with self.assertRaises(AlreadyStarted):
+                proc.start()
 
     def test_processrunner_leak_check(self):
         limit = 100
