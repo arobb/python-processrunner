@@ -2,14 +2,20 @@
 from __future__ import unicode_literals
 from builtins import dict
 from subprocess import PIPE, Popen
+from multiprocessing import Process
 
 import codecs
 import logging
 import time
 
+from .kitchenpatch import getwriter
+
 from . import settings
-from .prpipe import _PrPipe
-from .exceptionhandler import AlreadyStarted
+from .queuelink import QueueLink
+from .prpipewriter import _PrPipeWriter
+from .prpipereader import _PrPipeReader
+from .exceptionhandler import ProcessAlreadyStarted
+from .exceptionhandler import ProcessNotStarted
 
 # Private class only intended to be used by ProcessRunner
 class _Command(object):
@@ -20,22 +26,35 @@ class _Command(object):
     which provides proxy access to class methods
 
     """
-    def __init__(self, command, cwd=None, autostart=True):
+    def __init__(self,
+                 command,
+                 cwd=None,
+                 autostart=True,
+                 stdin=None):
         """
         Args:
             command (list): List of strings to pass to subprocess.Popen
-
-        Kwargs:
             cwd (string): Directory to change to before execution. Passed to
-            subprocess.Popen
+                subprocess.Popen
+            autostart (bool): Whether to automatically start the target
+                process or wait for the user to call start()
+            stdin (pipe): File-like object to read from
         """
         self._initializeLogging()
 
         self.started = False
         self.command = command
         self.cwd = cwd
+        self.stdinRequest = stdin
         self.proc = None  # Will hold a Popen instance
-        self.pipes = {}  # Will hold a dict of _PrPipe
+        self.pipes = {
+            'stdout': _PrPipeReader(),
+            'stderr': _PrPipeReader()
+        }
+
+        # Only create the stdin pipe entry if we've been asked to set up stdin
+        if self.stdinRequest is not None:
+            self.enableStdin()
 
         # Start running if we would like
         if autostart:
@@ -76,13 +95,21 @@ class _Command(object):
         """
         return self.command
 
+    def enableStdin(self):
+        """Enable the stdin pipe"""
+        if self.stdinRequest is None:
+            self.stdinRequest = True
+
+        self.pipes['stdin'] = _PrPipeWriter()
+
     def start(self):
         """Begin running the target process"""
         if self.started:
             message = "_Command.start called after process has started"
             self._log.info(message)
-            raise AlreadyStarted(message)
+            raise ProcessAlreadyStarted(message)
         else:
+            self._log.info("Starting the command")
             self.started = True
 
         # Start the process with subprocess.Popen
@@ -90,18 +117,29 @@ class _Command(object):
         # 2. Output from stdout and stderr buffered per line
         # 3. File handles are closed automatically when the process exits
         ON_POSIX = settings.config["ON_POSIX"]
-        self.proc = Popen(self.command,
-                          stdout=PIPE,
-                          stderr=PIPE,
-                          bufsize=1,
-                          close_fds=ON_POSIX,
-                          cwd=self.cwd)
+        popenKwargs = {
+            "stdout": PIPE,
+            "stderr": PIPE,
+            "universal_newlines": False,
+            "bufsize": 1,
+            "close_fds": ON_POSIX,
+            "cwd": self.cwd
+        }
+
+        if self.stdinRequest is not None:
+            popenKwargs['stdin'] = PIPE
+
+        self.proc = Popen(self.command, **popenKwargs)
 
         # Init readers to transfer output from the Popen pipes to local queues
         wrappedStdout = codecs.getreader("utf-8")(self.proc.stdout)
         wrappedStderr = codecs.getreader("utf-8")(self.proc.stderr)
-        self.pipes["stdout"] = _PrPipe(wrappedStdout)
-        self.pipes["stderr"] = _PrPipe(wrappedStderr)
+        self.pipes["stdout"].setPipeHandle(wrappedStdout)
+        self.pipes["stderr"].setPipeHandle(wrappedStderr)
+
+        if self.stdinRequest is not None:
+            wrappedStdin = getwriter("utf-8")(self.proc.stdin)
+            self.pipes["stdin"].setPipeHandle(wrappedStdin)
 
         return self.started
 
@@ -112,7 +150,7 @@ class _Command(object):
             procPipeName (string): One of "stdout" or "stderr"
 
         Returns:
-            _PrPipe
+            _PrPipe[Reader|Writer]
 
         Raises:
             KeyError
@@ -122,14 +160,32 @@ class _Command(object):
 
         return self.pipes[procPipeName]
 
-    def publish(self):
-        """Force publishing of any pending messages"""
-        for pipe in list(self.pipes.values()):
-            pipe.publish()
+    # def publish(self, requireLock):
+    #     """Force publishing of any pending messages
+    #
+    #     opportunitistic (bool): True to require a lock. Can deadlock. See
+    #         _PrPipeReader.publish for more details.
+    #
+    #     Return bool: True only if all pipes return True"""
+    #     publishedAll = True
+    #
+    #     for procPipeName, pipe in self.pipes.items():
+    #         self._log.debug("Publishing {}".format(procPipeName))
+    #         published = pipe.publish(requireLock=requireLock)
+    #         publishedAll = publishedAll and published
+    #
+    #         if published:
+    #             self._log.debug("Done publishing {}".format(procPipeName))
+    #         else:
+    #             self._log.debug("Publishing {} could not obtain lock"\
+    #                             .format(procPipeName))
+    #
+    #     # Return True only if all pipes published
+    #     return publishedAll
 
     def isQueueEmpty(self, procPipeName, clientId):
-        """Check whether the _PrPipe queues report empty for a given pipe and
-        client
+        """Check whether the _PrPipe* queues report empty for a given pipe
+        and client
 
         Args:
             clientId (string): ID of the client queue
@@ -179,22 +235,43 @@ class _Command(object):
         Returns:
             NoneType, int. NoneType if alive, or int with exit code if dead
         """
-        return self.proc.poll()
+        if self.proc is None:
+            raise ProcessNotStarted("_Command.poll called before process "
+                                    "started")
+        else:
+            return self.proc.poll()
 
-    def wait(self):
+    def wait(self, requirePublishLock=True):
         """Block until the process exits
 
         Does some extra checking to make sure the pipe managers have finished
         reading
 
+        Args:
+            requirePublishLock (bool): True to require a lock during the wait()
+                loop. Can cause a deadlock if used with an outside call to
+                publish(requireLock=True)
+
         Returns:
             None
         """
         def isAliveLocal():
-            self.publish()  # Force down any unprocessed messages
+            # Force down any unprocessed messages
+            # self.publish(requirePublishLock)
             alive = False
-            for pipe in list(self.pipes.values()):
+
+            # Iterate through the list of pipes
+            for pipeName in list(self.pipes.keys()):
+                pipe = self.getPipe(pipeName)
+
+                # Skip writers
+                if type(pipe) == _PrPipeWriter:
+                    continue
+
+                # Check if the pipe is alive
+                # Any pipe alive will cause us to return True
                 alive = alive or pipe.is_alive()
+
             return alive
 
         while self.poll() is None or isAliveLocal() is True:
@@ -208,6 +285,10 @@ class _Command(object):
         Returns:
             None
         """
+        if self.proc is None:
+            raise ProcessNotStarted("_Command.terminate called but process "
+                                    "not started")
+
         return self.proc.terminate()
 
     def kill(self):
@@ -217,6 +298,19 @@ class _Command(object):
             None
         """
         return self.proc.kill()
+
+    def closeStdin(self):
+        """Close the stdin pipe"""
+        try:
+            stdin = self.getPipe("stdin")
+            stdin.close()
+
+        # Stdin isn't available
+        except KeyError:
+            self._log.debug("Close called, but the stdin pipe isn't available")
+
+        except Exception as e:
+            raise e
 
     def registerClientQueue(self, procPipeName, queueProxy):
         """Register to get a client queue on a pipe manager

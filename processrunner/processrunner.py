@@ -5,10 +5,13 @@ from past.builtins import basestring
 from builtins import str as text
 from builtins import dict
 
+import errno
 import logging
 import random
+import socket
 import sys
 import time
+import traceback
 
 import multiprocessing
 from multiprocessing import Process
@@ -20,11 +23,14 @@ except ImportError:  # Python 3.x
     from queue import Empty
 
 from . import settings
+from .timer import Timer
 from .which import which
 from .commandmanager import _CommandManager
 from .exceptionhandler import CommandNotFound
-from .exceptionhandler import NotStarted
+from .exceptionhandler import ProcessAlreadyStarted
+from .exceptionhandler import ProcessNotStarted
 from .exceptionhandler import ExceptionHandler
+from .exceptionhandler import HandleNotSet
 
 # Global values when using ProcessRunner
 PROCESSRUNNER_PROCESSES = []  # Holding list for instances of ProcessRunner
@@ -50,7 +56,11 @@ def getActiveProcesses():
 class ProcessRunner:
     """Easily execute external processes"""
 
-    def __init__(self, command, cwd=None, autostart=True):
+    def __init__(self,
+                 command,
+                 cwd=None,
+                 autostart=True,
+                 stdin=None):
         """Easily execute external processes
 
         Can be used in a blocking or non-blocking manner
@@ -60,10 +70,11 @@ class ProcessRunner:
         Args:
             command (list): A list of strings, making up the command to pass
                 to Popen
-
-        Kwargs:
             cwd (string): Directory to change to before execution. Passed to
                 subprocess.Popen
+            autostart (bool): Whether to automatically start the target
+                process or wait for the user to call start()
+            stdin (pipe): File-like object to read from
         """
         self._initializeLogging()
         log = self._log
@@ -76,24 +87,8 @@ class ProcessRunner:
         settings.config["ON_POSIX"] = 'posix' in sys.builtin_module_names
 
         # Verify the command is a list of strings
-        log.debug("Command as provided (commas separating parts): {}"
-                  .format(", ".join(command)))
-        log.debug("Validating command list")
-        if not isinstance(command, list):
-            raise TypeError("ProcessRunner command must be a list of strings. "
-                            + text(type(command)) + " given.")
-
-        if sys.version_info[0] == 2:
-            stringComparator = basestring
-        elif sys.version_info[0] == 3:
-            stringComparator = str
-
-        for i, param in enumerate(command):
-            if not isinstance(param, stringComparator):
-                raise TypeError(
-                    "ProcessRunner command must be a list of strings. "
-                    + "Parameter {0} is {1}.".format(text(i),
-                                                     text(type(command))))
+        # Throws a TypeError if this validation fails
+        self.validateCommandFormat(command)
 
         # Verify the command exists
         if which(command[0]) is None:
@@ -107,14 +102,19 @@ class ProcessRunner:
         self.command = command
         self.cwd = cwd
         self.autostart = autostart
+        self.stdin = stdin
         self.run = None  # Will hold the proxied _Command instance
 
         # Multiprocessing instance used to start process-safe Queues
         self.queueManager = multiprocessing.Manager()
 
         # Storage for multiprocessing.Queues started on behalf of clients
-        self.pipeClients = dict(stdout=dict(), stderr=dict())
-        self.pipeClientProcesses = dict(stdout=dict(), stderr=dict())
+        self.pipeClients = dict(stdout=dict(),
+                                stderr=dict())
+        self.pipeClientProcesses = dict(stdout=dict(),
+                                        stderr=dict())
+        if self.stdin is not None:
+            self.enableStdin()
 
         # Instantiate the Popen wrapper
         log.debug("Instantiating the command execution manager subprocess")
@@ -122,17 +122,32 @@ class ProcessRunner:
         self.runManager = _CommandManager(authkey=authkey.encode())
         self.runManager.start()
 
-        # Trigger execution if autostart is True
-        log.info("Starting the command")
+        # Trigger execution if autostart is True (trigger Popen)
+        log.info("Prepping the command")
         self.run = self.runManager._Command(self.command,
-                                            self.cwd,
-                                            self.autostart)
+                                            cwd=self.cwd,
+                                            autostart=self.autostart,
+                                            stdin=self.stdin)
 
         # Register this ProcessRunner
         PROCESSRUNNER_PROCESSES.append(self)
 
         # Whether we've started the child mapLines processes
         self.mapLinesStarted = False
+
+        # If we are connected to another instance, store a reference to
+        # the next downstream process
+        self.downstreamProcessRunner = None
+
+        # Separate process to constantly flush
+        # self.flush_lock = Lock()
+        # self.autoFlushProcess = Process(target=self._flusher,
+        #                                 name="AUTO-FLUSH",
+        #                                 kwargs={"run": self.run})
+        # self.autoFlushProcess.daemon = True
+
+        # if autostart:
+        #     self.autoFlushProcess.start()
 
     def __enter__(self):
         """Support 'with' syntax
@@ -143,6 +158,28 @@ class ProcessRunner:
         """Support 'with' syntax
         """
         self.shutdown()
+
+    def __or__(self, other):
+        """Support ProcessRunner chaining
+
+        Use the OR syntax ProcessRunner | ProcessRunner to connect output of
+        one ProcessRunner instance to another.
+        """
+        if type(other) != type(self):
+            raise TypeError("Cannot OR {} with {}".format(type(other),
+                                                          type(self)))
+
+        if other.stdin is None:
+            try:
+                other.enableStdin()
+            except ProcessAlreadyStarted:
+                raise ProcessAlreadyStarted("Cannot chain downstream processes"
+                                            " after they have started")
+
+        stdin_clientId, stdin_q = other.registerForClientQueue("stdin")
+        self._linkClientQueues("stdout", stdin_q)
+
+        self.downstreamProcessRunner = other
 
     def _initializeLogging(self):
         if hasattr(self, '_log'):
@@ -165,16 +202,145 @@ class ProcessRunner:
         """
         return self.command
 
+    def validateCommandFormat(self, command):
+        """Run validation against the command list argument
+
+        Used for validation by ProcessRunner.__init__"""
+        self._log.debug("Command as provided (commas separating parts): {}"
+                        .format(", ".join(command)))
+        self._log.debug("Validating command list")
+
+        # Verify the command is a list
+        if not isinstance(command, list):
+            raise TypeError("ProcessRunner command must be a list of strings. "
+                            + text(type(command)) + " given.")
+
+        # Verify each part is a string
+        if sys.version_info[0] == 2:
+            stringComparator = basestring
+        elif sys.version_info[0] == 3:
+            stringComparator = str
+
+        for i, param in enumerate(command):
+            if not isinstance(param, stringComparator):
+                raise TypeError(
+                    "ProcessRunner command must be a list of strings. "
+                    + "Parameter {0} is {1}.".format(text(i),
+                                                     text(type(command))))
+
+        # It's valid if we got this far
+        return True
+
+    def enableStdin(self):
+        """Enable stdin on the target process before the process has started"""
+        if self.run is None:
+            pass
+
+        elif not self.run.get("started"):
+            self.run.enableStdin()
+
+        elif self.run.get("started"):
+            raise ProcessAlreadyStarted("Cannot enable stdin after the process"
+                                        "has been started")
+
+        if self.stdin is None:
+            self.stdin = True
+
+        self.pipeClients['stdin'] = dict()
+        self.pipeClientProcesses['stdin'] = dict()
+
     def start(self):
         """Pass through to _Command.start
 
-        :raises exceptionhandler.AlreadyStarted"""
+        :raises exceptionhandler.ProcessAlreadyStarted"""
+
+        # Make sure all mapLines watchers are started
+        self.startMapLines()
+
+        # Start the flusher process
+        # self.autoFlushProcess.start()
+
         return self.run.start()
 
-    def publish(self):
+    # def _flusher(self, run):
+    #     """Runs automatically in a subprocess to flush new messages
+    #     """
+    #     timer = Timer(5000)
+    #
+    #     while True:
+    #         try:
+    #             if timer.interval():
+    #                 self._log.warning("Flusher still running")
+    #
+    #             if run.get("started"):
+    #                 run.publish(requireLock=False)
+    #
+    #         # https://stackoverflow.com/a/34718439
+    #         except (socket.error, IOError) as e:
+    #             if e.errno != errno.EPIPE:
+    #                 # Not a broken pipe
+    #                 raise
+    #
+    #             self._log.info("Flush received a BrokenPipeError. The command "
+    #                            "has likely completed.")
+    #
+    #         except EOFError as e:
+    #             self._log.info("Flush received an EOFError. The command "
+    #                            "has likely completed.")
+    #
+    #         finally:
+    #             time.sleep(0.1)
+
+    # def flush(self):
+    #     """Force publishing of any pending messages on attached pipes
+    #
+    #     This will run in a loop until areAllQueuesEmpty() reports True.
+    #
+    #     If this ProcessRunner instance has been piped to a downstream instance,
+    #     flush() will also flush the downstream instance.
+    #     """
+    #     locked = self.flush_lock.acquire(block=False)
+    #     if not locked:
+    #         # self._log.debug("Flush did not acquire a lock:")
+    #         # for line in traceback.format_stack():
+    #         #     self._log.debug(line.strip())
+    #         return
+    #
+    #     try:
+    #         timer = Timer(5000)
+    #         while not self.areAllQueuesEmpty():
+    #             if timer.interval():
+    #                 self._log.warning("Flusher still running")
+    #
+    #             self._publish(requireLock=False)
+    #
+    #             if self.downstreamProcessRunner is not None:
+    #                 self.downstreamProcessRunner.flush()
+    #
+    #     # https://stackoverflow.com/a/34718439
+    #     except (socket.error, IOError) as e:
+    #         if e.errno != errno.EPIPE:
+    #             # Not a broken pipe
+    #             raise
+    #
+    #         self._log.info("Flush received a BrokenPipeError. The command "
+    #                        "has likely completed.")
+    #
+    #     except EOFError as e:
+    #         self._log.info("Flush received an EOFError. The command "
+    #                        "has likely completed.")
+    #
+    #     finally:
+    #         if locked:
+    #             self.flush_lock.release()
+
+    def _publish(self, requireLock):
         """Force publishing of any pending messages on attached pipes
+
+        requireLock (bool): True to require a lock. Can deadlock. See
+            _PrPipeReader.publish for more details.
         """
-        self.run.publish()
+        self.run.publish(requireLock=requireLock)
 
     def isQueueEmpty(self, procPipeName, clientId):
         """Check whether the pipe manager queues report empty
@@ -254,6 +420,15 @@ class ProcessRunner:
                         self.pipeClientProcesses[procPipeName][text(clientId)]\
                             .exitcode
 
+    def closeStdin(self):
+        """Proxy to call _Command.closeStdin"""
+        try:
+            self.run.closeStdin()
+
+        except HandleNotSet:
+            self._log.debug("Trying to close stdin, but the handle was never "
+                           "set")
+
     def wait(self):
         """Block until the Popen process exits
 
@@ -280,6 +455,10 @@ class ProcessRunner:
             timeoutMs (int): Milliseconds terminate should wait for main
                 process to exit before raising an error
         """
+        # Close the stdin pipe
+        if self.stdin is not None:
+            self.closeStdin()
+
         # Kill the main process
         self.terminateCommand()
 
@@ -305,15 +484,17 @@ class ProcessRunner:
         for procPipeName in list(self.pipeClientProcesses):
             for clientId, clientProcess in \
                     list(self.pipeClientProcesses[procPipeName].items()):
+
                 # Close any remaining client readers
                 try:
-                    self.pipeClientProcesses[procPipeName][text(clientId)] \
-                        .terminate()
+                    clientProcess.terminate()
+
                 except Exception as e:
                     raise Exception(
                         "Exception closing " + procPipeName + " client "
                         + text(clientId) + ": " + text(e) +
                         ". Did you trigger startMapLines first?")
+
                 # Remove references to client queues
                 self.unRegisterClientQueue(procPipeName, clientId)
 
@@ -330,7 +511,7 @@ class ProcessRunner:
             else:
                 raise e
 
-        except AttributeError as e:
+        except ProcessNotStarted:
             self._log.warning("ProcessRunner.terminateCommand called without "
                               "the target process being instantiated")
 
@@ -348,6 +529,12 @@ class ProcessRunner:
 
         Runs `terminate` in case it hasn't already been run"""
         self.terminate()
+
+        try:
+            self.closeStdin()
+        except HandleNotSet:
+            pass  # If the handle wasn't set, this was a noop
+
         self.queueManager.shutdown()
         self.runManager.shutdown()
 
@@ -368,7 +555,20 @@ class ProcessRunner:
         clientId = self.run.registerClientQueue(procPipeName, q)
         self.pipeClients[procPipeName][clientId] = q
 
-        return clientId
+        return clientId, q
+
+    def _linkClientQueues(self, procPipeName, queue):
+        """Connect an existing registerForClientQueue queue to another queue
+
+        Use an existing queue from registerForClientQueue and connect
+        it to another queue. Used for process chaining, connecting stdout
+        or stderr of one process to the stdin of the next.
+
+        Args:
+            queue (Queue proxy)
+        """
+        clientId = self.run.registerClientQueue(procPipeName, queue)
+        self.pipeClients[procPipeName][clientId] = queue
 
     def unRegisterClientQueue(self, procPipeName, clientId):
         """Unregister a client queue from a pipe manager
@@ -432,17 +632,23 @@ class ProcessRunner:
         Returns:
             dict
         """
-        clientId = self.registerForClientQueue(procPipeName)
+
+        """
+        This needs a re-think. With these moving to separate processes, 
+        status in particular needs to be communicated back in a more consistent
+        way.
+        """
+        clientId, clientQ = self.registerForClientQueue(procPipeName)
         status = dict(complete=False)
 
         def doWrite(run, func, status, clientId, procPipeName):
-            self._log.debug("Starting doWrite for " + procPipeName)
+            self._log.info("Starting doWrite for " + procPipeName)
 
             try:
                 # Continue while there MIGHT be data to read
                 while run.isAlive() \
                         or not run.isQueueEmpty(procPipeName, clientId):
-                    self._log.debug("might be data to read in " + procPipeName)
+                    self._log.debug(0, "might be data to read in " + procPipeName)
 
                     # Continue while we KNOW THERE IS data to read
                     while True:
@@ -459,12 +665,13 @@ class ProcessRunner:
             finally:
                 pass
 
-        client = Process(target=doWrite, kwargs=dict(run=self.run,
-                                                     func=func,
-                                                     status=status,
-                                                     clientId=clientId,
-                                                     procPipeName=procPipeName)
-                         )
+        client = Process(target=doWrite,
+                         name="mapLines-{}".format(procPipeName),
+                         kwargs=dict(run=self.run,
+                                     func=func,
+                                     status=status,
+                                     clientId=clientId,
+                                     procPipeName=procPipeName))
         client.daemon = True
 
         # Store the process so it can potentially be re-joined
@@ -501,20 +708,22 @@ class ProcessRunner:
         outputList = []
 
         if not self.run.get("started"):
-            raise NotStarted("Target command hasn't started yet; please call "
-                             "ProcessRunner.start() to start the target "
-                             "process")
+            raise ProcessNotStarted("Target command hasn't started yet; please"
+                                    " call ProcessRunner.start() to start the "
+                                    "target process")
 
         # Register for client IDs from all appropriate pipe managers
         clientIds = dict()
         if procPipeName is None:
             for pipeName in list(self.pipeClients):
-                clientIds[pipeName] = self.registerForClientQueue(pipeName)
+                clientIds[pipeName], q = self.registerForClientQueue(pipeName)
                 self._log.debug("Registered {} for client {}"
                                 .format(pipeName, clientIds[pipeName]))
 
         else:
-            clientIds[procPipeName] = self.registerForClientQueue(procPipeName)
+            clientIds[procPipeName], q = \
+                self.registerForClientQueue(procPipeName)
+
             self._log.debug("Registered {} for client {}"
                             .format(procPipeName, clientIds[procPipeName]))
 

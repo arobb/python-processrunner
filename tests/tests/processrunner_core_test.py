@@ -12,8 +12,8 @@ from tests.tests import context
 from tests.tests.spinner import Spinner
 from processrunner import ProcessRunner
 from processrunner import runCommand
-from processrunner.exceptionhandler import AlreadyStarted
-from processrunner.exceptionhandler import NotStarted
+from processrunner.exceptionhandler import ProcessAlreadyStarted
+from processrunner.exceptionhandler import ProcessNotStarted
 
 
 '''
@@ -74,10 +74,10 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         self.assertEqual(result, 0, 'Test script return code not zero')
 
     def test_processrunner_collectLines_raise_NotStarted(self):
-        """Ensure NotStarted is raised when using collectLines before
+        """Ensure ProcessNotStarted is raised when using collectLines before
         start()"""
         command = ["echo", "bonjour"]
-        with self.assertRaises(NotStarted):
+        with self.assertRaises(ProcessNotStarted):
             with ProcessRunner(command, autostart=False) as proc:
                 output = proc.collectLines()
 
@@ -92,7 +92,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         command = ["echo", "bonjour"]
         with ProcessRunner(command, autostart=autostart) as proc:
             # Duplicate proc.starts()
-            with self.assertRaises(AlreadyStarted):
+            with self.assertRaises(ProcessAlreadyStarted):
                 if start_a:
                     proc.start()
                 if start_b:
@@ -116,11 +116,11 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             for i in range(0, testLen):
                 try:
                     proc.start()
-                except AlreadyStarted:
+                except ProcessAlreadyStarted:
                     pass
 
             # Trigger one more that is the test
-            with self.assertRaises(AlreadyStarted):
+            with self.assertRaises(ProcessAlreadyStarted):
                 proc.start()
 
     def test_processrunner_leak_check(self):
@@ -173,10 +173,12 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
                          "Returned text not the same length: in {}, out {}".format(len(textIn), len(textOut)))
 
     def test_processrunner_check_emoji_content(self):
+        """Verifies compatibility with extended characters"""
         textIn = "😂" * 10
         command = ["echo", textIn]
 
         with ProcessRunner(command) as proc:
+            time.sleep(30)  # TODO: < Fix the need for this
             textOut = proc.collectLines()[0]
 
         self.assertEqual(textIn,
@@ -193,7 +195,9 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             command = ["cat", tempFile.name]
 
             with ProcessRunner(command) as proc:
-                textOut = proc.collectLines()[0]  # < Sometimes fails with index out of range
+                time.sleep(30)  # TODO: < Fix the need for this
+                fullText = proc.collectLines()
+                textOut = fullText[0]  # < Sometimes fails with index out of range
 
         self.assertEqual(len(textIn),
                          len(textOut),

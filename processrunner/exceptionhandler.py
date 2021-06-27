@@ -29,7 +29,7 @@ class CommandNotFound(OSError):
         return repr(self.value)
 
 
-class AlreadyStarted(Exception):
+class ProcessAlreadyStarted(Exception):
     """Raise if _Command.start is called after the process is started"""
     def __init__(self, value=""):
         """Arguments must be option to prevent triggering
@@ -41,7 +41,7 @@ class AlreadyStarted(Exception):
         return repr(self.value)
 
 
-class NotStarted(Exception):
+class ProcessNotStarted(Exception):
     """Raise if _Command.start hasn't been called, but a method has been
     called that depends on the target process running.
     """
@@ -49,6 +49,32 @@ class NotStarted(Exception):
         """Arguments must be option to prevent triggering
         https://bugs.python.org/issue15440 when raised in _Command"""
         self.errno = 4
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+class HandleAlreadySet(Exception):
+    """Raise if a _PrPipe has already been configured with a pipe handle"""
+    def __init__(self, value=""):
+        """Arguments must be option to prevent triggering
+        https://bugs.python.org/issue15440 when raised in _Command"""
+        self.errno = 5
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+class HandleNotSet(Exception):
+    """Raise if a _PrPipe has not been configured with a pipe handle, but
+    a call requires one have been set
+    """
+    def __init__(self, value=""):
+        """Arguments must be option to prevent triggering
+        https://bugs.python.org/issue15440 when raised in _Command"""
+        self.errno = 6
         self.value = value
 
     def __str__(self):
