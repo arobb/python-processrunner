@@ -8,7 +8,7 @@ import logging
 import random
 import time
 
-from multiprocessing import Process, Lock
+from multiprocessing import Process, Lock, Manager
 
 try:  # Python 2.7
     from Queue import Empty
@@ -17,17 +17,18 @@ except ImportError:  # Python 3.x
 
 
 class QueueLink(object):
-    def __init__(self):
+    def __init__(self, name=None):
         """Manages the pull/push with PrPipe queues"""
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+        self.name = name
 
         self._initializeLogging()
 
         # List of locks allows decoupled IO while also preventing the set of
         # queues from changing during IO operations
-        self.clientQueuesLock = Lock()
-        self.lastClientId = 0
+        self.queuesLock = Lock()
+        self.lastQueueId = 0
         self.clientQueuesSource = dict()
         self.clientQueuesDestination = dict()
         self.clientPairPublishers = dict()
@@ -46,30 +47,41 @@ class QueueLink(object):
             if self._log is not None:
                 return
 
-        # Logging
-        self._log = logging.getLogger(__name__)
+        # Make a helpful name
+        if self.name is None:
+            name = __name__
+        else:
+            name = "{}.{}".format(__name__, self.name)
+
+        self._log = logging.getLogger(name)
         self.addLoggingHandler(logging.NullHandler())
 
     def addLoggingHandler(self, handler):
         self._log.addHandler(handler)
 
     @staticmethod
-    def publisher(pair_name, source_queue, dest_queue):
-        """Move messages from the inbound queue to the outbound queue"""
-        # with lock:
-        # Think about whether this should be a double loop over two lists,
-        # or whether to have a separate publisher for each source/dest pair
-        # Atm I like having a separate one for each pair
-        log = logging.getLogger("{}-{}".format(__name__, pair_name))
+    def publisher(pair_name, source_queue, dest_queue, name=None):
+        """Move messages from the source queue to the destination queue"""
+        # TODO: Refactor this to iterate through a list of dest_queues
+        # Make a helpful logger name
+        if name is None:
+            logger_name = "{}.publisher.{}".format(__name__, pair_name)
+        else:
+            logger_name = "{}.publisher.{}.{}".format(__name__
+                                                      , name
+                                                      , pair_name)
+
+        log = logging.getLogger(logger_name)
         log.addHandler(logging.NullHandler())
 
         while True:
             try:
-                log.debug("Getting line from source in pair {}"
+                log.debug("Trying to get line from source in pair {}"
                           .format(pair_name))
                 line = source_queue.get_nowait()
 
-                log.debug("Writing line to dest in pair {}".format(pair_name))
+                log.info("Writing line to dest in pair {}"
+                         .format(pair_name))
                 dest_queue.put(line)
 
                 source_queue.task_done()
@@ -77,23 +89,54 @@ class QueueLink(object):
             except Empty:
                 time.sleep(0.001)
 
-    def getClientQueue(self, client_id):
+    # @staticmethod
+    # def publisher(source_no, source_queue, dest_queue_list, pipe_name=None):
+    #     """Move messages from the source queue to the destination queue"""
+    #     # TODO: Refactor this to iterate through a list of dest_queues
+    #     # Make a helpful logger name
+    #     if pipe_name is None:
+    #         logger_name = "{}.publisher.{}".format(__name__, source_no)
+    #     else:
+    #         logger_name = "{}.publisher.{}.{}".format(__name__
+    #                                                   , pipe_name
+    #                                                   , source_no)
+    #
+    #     log = logging.getLogger(logger_name)
+    #     log.addHandler(logging.NullHandler())
+    #
+    #     while True:
+    #         try:
+    #             log.debug("Trying to get line from source in pair {}"
+    #                       .format(source_no))
+    #             line = source_queue.get_nowait()
+    #
+    #             log.info("Writing line to dest in pair {}"
+    #                      .format(source_no))
+    #             for dest_queue in dest_queue_list:
+    #                 dest_queue.put(line)
+    #
+    #             source_queue.task_done()
+    #
+    #         except Empty:
+    #             time.sleep(0.001)
+
+    def getQueue(self, queue_id):
         """Retrieve a client's Queue proxy object
 
         Args:
-            client_id (string): ID of the client
+            queue_id (string): ID of the client
 
         Returns:
             QueueProxy
         """
-        if client_id in self.clientQueuesSource:
+        if queue_id in self.clientQueuesSource:
             queue_list = self.clientQueuesSource
         else:
             queue_list = self.clientQueuesDestination
 
-        return queue_list[text(client_id)]
+        return queue_list[text(queue_id)]
 
-    def registerClientQueue(self, queue_proxy, direction):
+    def registerQueue(self, queue_proxy, direction):
         """Attach an additional Queue proxy to this _PrPipe
 
         All elements published() from now on will also be added to this Queue
@@ -112,13 +155,9 @@ class QueueLink(object):
             string. The client's ID for access to this queue
 
         """
-        # Make sure we don't re-use a clientId
-        # with self.clientQueuesLock:
-        #     clientId = self.lastClientId + 1
-        #     self.lastClientId = clientId
-        #
-        #     self.clientQueues[text(clientId)] = queueProxy
-
+        # TODO: Refactor this to only start one publisher per source queue
+        # Probably also need to use a managed list so we can add and remove
+        # dest queues
         if direction == "source" or direction == "destination":
             pass
         else:
@@ -129,7 +168,7 @@ class QueueLink(object):
         op_direction_caps = "Destination" if direction == "source" \
             else "Source"
 
-        with self.clientQueuesLock:
+        with self.queuesLock:
             # Get the queue list and opposite queue list
             queue_list = getattr(self, "clientQueues{}".format(direction_caps))
             op_queue_list = getattr(self, "clientQueues{}"
@@ -145,66 +184,64 @@ class QueueLink(object):
                                  " add to the {} list because it would cause"
                                  " a circular reference.".format(direction))
 
-            # Increment the current client_id
-            client_id = self.lastClientId + 1
-            self.lastClientId = client_id
+            # Increment the current queue_id
+            queue_id = self.lastQueueId + 1
+            self.lastQueueId = queue_id
 
             # Store the queue proxy in the queue list
-            queue_list[text(client_id)] = queue_proxy
+            queue_list[text(queue_id)] = queue_proxy
 
             # Create the publishing processes for all new pairs
-            op_direction_caps = "Destination" if direction == "source" \
-                else "Source"
-            op_queue_list = getattr(self, "clientQueues{}"
-                                    .format(op_direction_caps))
-
             # Iterate over the list of queues in the opposite list
-            for op_client_id, op_q in op_queue_list.items():
+            for op_queue_id, op_q in op_queue_list.items():
                 if direction == "source":
-                    pair_name = "{}-{}".format(client_id, op_client_id)
+                    pair_name = "{}-{}".format(queue_id, op_queue_id)
                     source_queue = queue_proxy
                     dest_queue = op_q
                 else:
-                    pair_name = "{}-{}".format(op_client_id, client_id)
+                    pair_name = "{}-{}".format(op_queue_id, queue_id)
                     source_queue = op_q
                     dest_queue = queue_proxy
 
                 # Start a publisher process to move items from the source
                 # queue to the destination queue
+                self._log.info("Starting queue link for pair {}"
+                               .format(pair_name))
                 proc = Process(target=self.publisher,
                                name="ClientPublisher-{}".format(pair_name),
-                               kwargs={"pair_name": pair_name,
+                               kwargs={"name": self.name,
+                                       "pair_name": pair_name,
                                        "source_queue": source_queue,
                                        "dest_queue": dest_queue})
                 proc.daemon = True
                 proc.start()
                 self.clientPairPublishers[text(pair_name)] = proc
 
-        return text(client_id)
+        return text(queue_id)
 
-    def unRegisterClientQueue(self, client_id, direction):
+    def unRegisterQueue(self, queue_id, direction):
         """Detach a Queue proxy from this _PrPipe
 
         Returns the clientId that was removed
 
         Args:
-            client_id (string): ID of the client
+            queue_id (string): ID of the client
             direction (string): source or destination
 
         Returns:
             string. ID of the client queue
 
         """
-        # with self.clientQueuesLock:
+        # with self.queuesLock:
         #     if text(clientId) in self.clientQueues:
         #         self.clientQueues.pop(clientId)
 
         direction_caps = direction.capitalize()
 
-        with self.clientQueuesLock:
+        with self.queuesLock:
             queue_list = getattr(self, "clientQueues{}".format(direction_caps))
-            if text(client_id) in queue_list:
-                queue_list.pop(client_id)
+            if text(queue_id) in queue_list:
+                queue_list.pop(queue_id)
 
             # Create the publishing processes for all new pairs
             op_direction_caps = "Destination" if direction == "source" \
@@ -213,16 +250,63 @@ class QueueLink(object):
                                     .format(op_direction_caps))
 
             # Iterate over the list of queues in the opposite list
-            for op_client_id, op_q in op_queue_list.items():
+            for op_queue_id, op_q in op_queue_list.items():
                 if direction == "source":
-                    pair_name = "{}-{}".format(client_id, op_client_id)
+                    pair_name = "{}-{}".format(queue_id, op_queue_id)
                 else:
-                    pair_name = "{}-{}".format(op_client_id, client_id)
+                    pair_name = "{}-{}".format(op_queue_id, queue_id)
 
                 # Stop the publisher for the pair
                 self.clientPairPublishers[text(pair_name)].terminate()
 
-        return text(client_id)
+        return text(queue_id)
+
+    def isEmpty(self, queue_id=None):
+        """Checks whether the primary Queue or any clients' Queues are empty
+
+        Returns True ONLY if ALL queues are empty if clientId is None
+        Returns True ONLY if both main queue and specified client queue are
+            empty when clientId is provided
+
+        Args:
+            queue_id (string): ID of the client
+
+        Returns:
+            bool
+        """
+        with self.queuesLock:
+            if queue_id is not None:
+                self._log.debug("Checking if {} is empty".format(queue_id))
+                empty = True
+
+                # If this is a downstream queue, we need to make sure all
+                # upstream queues are empty, too
+                if queue_id in self.clientQueuesDestination.keys():
+                    self._log.debug("First checking upstream queue(s) of {}"
+                                    .format(queue_id))
+
+                    for source_id in self.clientQueuesSource.keys():
+                        source_empty = self.getQueue(source_id).empty()
+                        self._log.info("Source {} is empty: {}"
+                                        .format(source_id, source_empty))
+                        empty = empty and source_empty
+
+                queue_empty = self.getQueue(queue_id).empty()
+                empty = empty and queue_empty
+                self._log.info("{} is empty: {}"
+                                .format(queue_id, queue_empty))
+
+            else:
+                empty = True
+
+                for q in list(self.clientQueuesSource.values()):
+                    empty = empty and q.empty()
+
+                for q in list(self.clientQueuesDestination.values()):
+                    empty = empty and q.empty()
+
+            self._log.debug("Reporting queue link empty: {}".format(empty))
+            return empty
 
     def destructiveAudit(self, direction):
         """Print a line from each client Queue attached to this _PrPipe
@@ -232,7 +316,7 @@ class QueueLink(object):
 
         This is a destructive operation, as it *removes* a line from each Queue
         """
-        # with self.clientQueuesLock:
+        # with self.queuesLock:
         #     for clientId in list(self.clientQueues):
         #         try:
         #             self._log.info("clientId {}: {}"
@@ -244,14 +328,14 @@ class QueueLink(object):
 
         direction_caps = direction.capitalize()
 
-        with self.clientQueuesLock:
+        with self.queuesLock:
             queue_list = getattr(self, "clientQueues{}".format(direction_caps))
 
-            for client_id in list(queue_list):
+            for queue_id in list(queue_list):
                 try:
-                    self._log.info("client_id {}: {}"
-                                   .format(text(client_id),
-                                           self.getLine(client_id)))
+                    self._log.info("queue_id {}: {}"
+                                   .format(text(queue_id),
+                                           self.getLine(queue_id)))
                 except Empty:
-                    self._log.info("client_id {} is empty"
-                                   .format(text(client_id)))
+                    self._log.info("queue_id {} is empty"
+                                   .format(text(queue_id)))
