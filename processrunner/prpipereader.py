@@ -3,9 +3,9 @@ from __future__ import unicode_literals
 from builtins import str as text
 from builtins import dict
 
-import time
+import logging
 
-from multiprocessing import Process, Lock, JoinableQueue
+from multiprocessing import Process, Lock
 
 try:  # Python 2.7
     from Queue import Empty
@@ -15,7 +15,6 @@ except ImportError:  # Python 3.x
 from . import settings
 from .prpipe import _PrPipe
 from .contentwrapper import ContentWrapper
-from .exceptionhandler import HandleAlreadySet
 
 
 # Private class only intended to be used by ProcessRunner
@@ -29,147 +28,65 @@ class _PrPipeReader(_PrPipe):
        Clients register their own queues.
     """
 
-    def __init__(self, pipeHandle=None):
+    def __init__(self, queue, pipeHandle=None, name=None):
         """
         Args:
             pipeHandle (pipe): Pipe to monitor for records
         """
-        super(type(self), self).__init__()
-        self._initializeLogging(__name__)
+        # Initialize the parent class
+        super(type(self), self).__init__(queue=queue,
+                                         subclass_name=__name__,
+                                         queue_direction="source",
+                                         name=name,
+                                         pipe_handle=pipeHandle)
 
-        self.queue = JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
-        # self.inboundQueueLock = self.getQueueLock()
-        self.inboundQueueLock = Lock()
+        # Store the queue in the correct orientation in the queue link
+        # self.queue_link.registerQueue(queue_proxy=self.queue,
+        #                               direction="source")
 
-        self.process = None
-        if pipeHandle is not None:
-            self.setPipeHandle(pipeHandle)
-
-    def setPipeHandle(self, pipeHandle):
-        """Set the inbound pipe handle to read from
-
-        Args:
-            pipeHandle (pipe): An open pipe (subclasses of file, IO.IOBase)
-
-        Raises:
-            HandleAlreadySet
-        """
-        if self.process is not None:
-            raise HandleAlreadySet
-
-        self.process = Process(target=self.enqueue_output,
-                               name="PrPipeReader",
-                               kwargs={"fromprocess": pipeHandle,
-                                       "queue": self.queue})
-        self.process.daemon = True
-        self.process.start()
-
-    def enqueue_output(self, fromprocess, queue):
+    @staticmethod
+    def queue_pipe_adapter(pipe_name,
+                           pipe_handle,
+                           queue,
+                           queue_lock,
+                           stop_event):
         """Copy lines from a given pipe handle into a local threading.Queue
 
         Runs in a separate process, started by __init__. Closes pipe when done
         reading.
 
         Args:
-            fromprocess (pipe): Pipe to read from
+            pipe_name (string): Name of the pipe we will read from
+            pipe_handle (pipe): Pipe to read from
             queue (Queue): Queue to write to
+            queue_lock (Lock): Lock used to indicate a write in progress
+            stop_event (Event): Used to determine whether to stop the process
         """
-        for line in iter(fromprocess.readline, ''):
-            self._log.info("Enqueing line of length {}".format(len(line)))
-            lineContent = ContentWrapper(line)
-            queue.put(lineContent)
+        logger_name = "{}.queue_pipe_adapter.{}".format(__name__, pipe_name)
+        log = logging.getLogger(logger_name)
+        log.addHandler(logging.NullHandler())
 
-            queueStatus = queue.empty()
-            self._log.debug("Queue reporting empty as '{}' after adding "
-                            "line of length {}".format(queueStatus,
-                                                       len(lineContent)))
+        log.info("Starting reader process")
+        if pipe_handle.closed:
+            log.warning("Pipe handle is already closed")
 
-            # Wait until the queue reports the added content
-            while queue.empty():
-                time.sleep(0.001)
+        else:
+            for line in iter(pipe_handle.readline, ''):
+                log.info("Read line, trying to get a lock")
+                with queue_lock:
+                    log.info("Enqueing line of length {}".format(len(line)))
+                    lineContent = ContentWrapper(line)
+                    queue.put(lineContent)
 
-            # If the queue originally reported that it was empty, report
-            # that it's now showing the new content
-            if queueStatus:
-                self._log.debug("Queue now reporting the added content")
+                # Check whether we should stop now
+                if stop_event.is_set():
+                    log.info("Asked to stop")
+                    break
 
-        self._log.debug("Closing pipe handle")
-        fromprocess.close()
+            log.info("Closing pipe handle")
+            pipe_handle.close()
 
-    def publish(self, requireLock=False):
-        """Push messages from the main queue to all client queues
-
-        Must be triggered by an external mechanism
-        Typically triggered by getLine or wait
-
-        Args:
-            requireLock (bool): True to force obtaining a queue lock. If a
-                lock is not obtained, publishing will not occur to prevent
-                queues from missing messages. NOTE THAT TRUE MAY DEADLOCK
-                WHEN CALLED CONCURRENTLY WITH A CALL TO isEmpty.
-
-                Recommend using False (the default) when called from outside
-                ProcessRunner. (Internal functions call this with True
-                regularly.)
-        """
-        self._log.debug("Trying to get inboundQueueLock")
-        with self.inboundQueueLock:
-            self._log.debug("inboundQueueLock obtained")
-            try:
-
-                while True:
-                    self._log.debug("Getting line from the main queue")
-                    line = self.queue.get_nowait()
-
-                    # Write the line to each client queue
-                    for clientId, q in self.clientQueues.items():
-                        self._log.debug("Writing line to {}".format(clientId))
-                        q.put(line)
-
-                    self.queue.task_done()
-
-            except Empty:
-                self._log.debug("Queue empty")
-
-            return True
-
-        return False
-
-    def isEmpty(self, clientId=None):
-        """Checks whether the primary Queue or any clients' Queues are empty
-
-        Returns True ONLY if ALL queues are empty if clientId is None
-        Returns True ONLY if both main queue and specified client queue are
-            empty when clientId is provided
-
-        Args:
-            clientId (string): ID of the client
-
-        Returns:
-            bool
-        """
-        with self.inboundQueueLock:
-            if clientId is not None:
-                empty = self.queue.empty() \
-                        and self.getQueue(clientId).empty()
-
-            else:
-                empty = self.queue.empty()
-
-                for q in list(self.clientQueues.values()):
-                    empty = empty and q.empty()
-
-            self._log.debug("Reporting pipe empty: {}".format(empty))
-            return empty
-
-    def is_alive(self):
-        """Check whether the thread managing the pipe > Queue movement
-        is still active
-
-        Returns:
-            bool
-        """
-        return self.process.is_alive()
+        log.info("Sub-process complete")
 
     def getLine(self, clientId):
         """Retrieve a line from a given client's Queue
@@ -183,14 +100,13 @@ class _PrPipeReader(_PrPipe):
         Raises:
             Empty
         """
-        # Pull any newer lines
-        self.publish()
+        self._log.debug("Trying to get a line for client {}".format(clientId))
 
         # Throws Empty
         q = self.getQueue(clientId)
         line = q.get_nowait()
         q.task_done()
 
-        self._log.debug("Returning line")
+        self._log.debug("Returning line to client {}".format(clientId))
 
         return line.value

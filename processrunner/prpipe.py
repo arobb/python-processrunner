@@ -7,25 +7,77 @@ from builtins import dict
 import logging
 import random
 
-from multiprocessing import Lock
+from multiprocessing import Event, Lock, Process
 
 try:  # Python 2.7
     from Queue import Empty
 except ImportError:  # Python 3.x
     from queue import Empty
 
+from .queuelink import QueueLink
+from .exceptionhandler import HandleAlreadySet
 
 class _PrPipe(object):
-    def __init__(self):
+    def __init__(self,
+                 queue,
+                 subclass_name,
+                 queue_direction,
+                 name=None,
+                 pipe_handle=None):
+        """PrPipe abstract implementation
+
+        :argument string queue_direction: Indicate direction relative to pipe;
+            e.g. for PrPipeReader from stdout, the flow is (PIPE => QUEUE) =>
+             CLIENT QUEUES (from pipe/queue into client queues), and therefore
+             queue_direction would be "source".
+        """
+
+        # Unique ID for this PrPipe
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
 
-        # List of locks allows decoupled IO while also preventing the set of
-        # queues from changing during IO operations
-        self.clientQueuesLockList = []  # Might get rid of this
-        self.clientQueuesLock = Lock()
-        self.clientQueues = dict()
+        # Name for this instance, typically stdin/stdout/stderr
+        self.name = name
+
+        # Name of the subclass (PrPipeReader, PrPipeWriter)
+        self.subclass_name = subclass_name
+
+        # Initialize the logger
+        self._initializeLogging()
+
+        # Which "direction" client queues will use in the queue_link
+        self.queue_direction = queue_direction
+        self.client_direction = "source" if queue_direction == "destination" \
+            else "destination"
+
+        # Whether we have ever been started
+        self.started = Event()
+
+        # Whether the queue adapter process should stop
+        self.stop_event = Event()
+
+        # The queue proxy to be used as the main input or output buffer.
+        # Attaching this to the queue link is the responsibility of subclasses.
+        self.queue = queue
+
+        # Mechanism to connect the baseline queue and client queues
+        self.queue_link = QueueLink(self.name)
+
+        # Store the queue in the correct orientation in the queue link
+        self.queue_link.registerQueue(queue_proxy=self.queue,
+                                      direction=self.queue_direction)
+
+        # Lock to notify readers/writers that a read/write is in progress
+        self.queue_lock = Lock()
+
+        # Keep track of the last client ID we used. Monotonically increasing
+        # across all queues related to this PrPipe.
         self.lastClientId = 0
+
+        self.process = None
+        self.pipeHandle = None
+        if pipe_handle is not None:
+            self.setPipeHandle(pipe_handle)
 
     # Class contains Locks and Queues which cannot be pickled
     def __getstate__(self):
@@ -36,17 +88,65 @@ class _PrPipe(object):
         """
         raise Exception("Don't pickle me!")
 
-    def _initializeLogging(self, name):
+    def _initializeLogging(self):
         if hasattr(self, '_log'):
             if self._log is not None:
                 return
 
+        # Make a helpful log name
+        if self.name is None:
+            log_name = self.subclass_name
+        else:
+            log_name = "{}.{}".format(self.subclass_name, self.name)
+
         # Logging
-        self._log = logging.getLogger(name)
+        self._log = logging.getLogger(log_name)
         self.addLoggingHandler(logging.NullHandler())
 
     def addLoggingHandler(self, handler):
         self._log.addHandler(handler)
+
+    def setPipeHandle(self, pipeHandle):
+        """Set the pipe handle to use
+
+        Args:
+            pipeHandle (pipe): An open pipe (subclasses of file, IO.IOBase)
+
+        Raises:
+            HandleAlreadySet
+        """
+        if self.process is not None:
+            raise HandleAlreadySet
+
+        # Store the pipehandle
+        self.pipeHandle = pipeHandle
+
+        # Process name
+        process_name = "{}-{}".format(self.subclass_name, self.name)
+
+        self._log.debug("Setting {} adapter process for {} pipe handle"
+                        .format(self.subclass_name, self.name))
+        self.process = Process(target=self.queue_pipe_adapter,
+                               name=process_name,
+                               kwargs={"pipe_name": self.name,
+                                       "pipe_handle": pipeHandle,
+                                       "queue": self.queue,
+                                       "queue_lock": self.queue_lock,
+                                       "stop_event": self.stop_event})
+        self.process.daemon = True
+        self.process.start()
+        self.started.set()
+        self._log.debug("Kicked off {} adapter process for {} pipe handle"
+                        .format(self.subclass_name, self.name))
+
+    @staticmethod
+    def queue_pipe_adapter(pipe_name,
+                           pipe_handle,
+                           queue,
+                           queue_lock,
+                           stop_event):
+        """Override me in a subclass to do something useful"""
+        pass
 
     def getQueue(self, clientId):
         """Retrieve a client's Queue proxy object
@@ -57,123 +157,79 @@ class _PrPipe(object):
         Returns:
             QueueProxy
         """
-        return self.clientQueues[text(clientId)]
+        return self.queue_link.getQueue(clientId)
 
-    def getQueueLock(self):
-        """Retrieve a new Lock for the client queue list
+    def isEmpty(self, clientId=None):
+        """Checks whether the primary Queue or any clients' Queues are empty
 
-        Returns:
-            Lock
-        """
-        newLock = Lock()
-        self.clientQueuesLockList.append(newLock)
-
-        return newLock
-
-    def deleteQueueLock(self, lock):
-        """Remove a previously created Lock object from the list of Locks
-
-        :arg lock Lock() previously obtained from getQueueLock
-        """
-        self.clientQueuesLockList.remove(lock)
-
-    def getQueueLockList(self):
-        return self.clientQueuesLockList
-
-    def registerClientQueue(self, queueProxy):
-        """Attach an additional Queue proxy to this _PrPipe
-
-        All elements published() from now on will also be added to this Queue
-        Returns the clientId for the new client, which must be used in all
-        future interaction with this _PrPipe
-
-        A list of Locks created by getQueueLock allows reads and writes to be
-        decoupled while also preventing the list from changing during either
-        operation.
-
-        Args:
-            queueProxy (QueueProxy): Proxy object to a Queue we should populate
-
-        Returns:
-            string. The client's ID for access to this queue
-
-        """
-        # # Lock all of the locks
-        # localLock = None  # In case there are no current locks, make one
-        # if len(self.clientQueuesLockList) == 0:
-        #     localLock = self.getQueueLock()
-        #     localLock.acquire()
-        #
-        # # With existing locks, lock them all
-        # else:
-        #     for lock in self.clientQueuesLockList:
-        #         lock.acquire(block=True)
-
-        # Make sure we don't re-use a clientId
-        with self.clientQueuesLock:
-            clientId = self.lastClientId + 1
-            self.lastClientId = clientId
-
-            self.clientQueues[text(clientId)] = queueProxy
-
-        # # Unlock all of the locks
-        # if localLock is not None:
-        #     localLock.release()
-        #     self.deleteQueueLock(localLock)
-        #
-        # else:
-        #     for lock in self.clientQueuesLockList:
-        #         lock.release()
-
-        return text(clientId)
-
-    def unRegisterClientQueue(self, clientId):
-        """Detach a Queue proxy from this _PrPipe
-
-        Returns the clientId that was removed
+        Returns True ONLY if ALL queues are empty if clientId is None
+        Returns True ONLY if both main queue and specified client queue are
+            empty when clientId is provided
 
         Args:
             clientId (string): ID of the client
 
         Returns:
-            string. ID of the client queue
-
+            bool
         """
-        # # Lock all of the locks
-        # lock = None  # In case there are no current locks, make one
-        # if len(self.clientQueuesLockList) == 0:
-        #     lock = self.getQueueLock()
-        #
-        # # With existing locks, lock them all
-        # else:
-        #     for lock in self.clientQueuesLockList:
-        #         lock.acquire(block=True)
+        with self.queue_lock:
+            if clientId is not None:
+                empty = self.queue.empty() \
+                        and self.queue_link.isEmpty(clientId)
 
-        with self.clientQueuesLock:
-            if text(clientId) in self.clientQueues:
-                self.clientQueues.pop(clientId)
+                self._log.debug("Reporting pipe empty for client {}: {}"
+                                .format(clientId, empty))
 
-        # self.deleteQueueLock(lock)
+            else:
+                empty = self.queue.empty() \
+                        and self.queue_link.isEmpty()
 
-        return text(clientId)
+                self._log.debug("Reporting pipe empty: {}".format(empty))
+
+            return empty
+
+    def is_alive(self):
+        """Check whether the thread managing the pipe > Queue movement
+        is still active
+
+        Returns:
+            bool
+        """
+        return self.process.is_alive()
+
+    def is_drained(self, clientId=None):
+        """Check alive and empty
+
+        Attempts clean semantic response to "is there, or will there be, data
+        to read?"
+
+        :returns bool"""
+        drained = True
+
+        # If we aren't started, we have to stop here. The process isn't ready
+        # to call is_alive()
+        if not self.started.is_set():
+            return False
+
+        # Alive (True) means we are not drained
+        drained = drained and not self.is_alive()
+
+        # Checks a similar function on the queue_link
+        drained = drained and self.queue_link.is_drained(queue_id=clientId)
+
+        # Not checking self.isEmpty because that is effectively done by
+        # running self.queue_link.is_drained()
+
+        return drained
+
+    def registerClientQueue(self, queueProxy):
+        return self.queue_link.registerQueue(queue_proxy=queueProxy,
+                                             direction=self.client_direction)
+
+    def unRegisterClientQueue(self, clientId):
+        return self.queue_link.unRegisterQueue(queue_id=clientId,
+                                               direction=self.client_direction)
 
     def destructiveAudit(self):
-        """Print a line from each client Queue attached to this _PrPipe
-
-        This is a destructive operation, as it *removes* a line from each Queue
-        """
-        # lock = self.getQueueLock()
-        #
-        # with lock:
-
-        with self.clientQueuesLock:
-            for clientId in list(self.clientQueues):
-                try:
-                    self._log.info("clientId {}: {}"
-                                   .format(text(clientId),
-                                           self.getLine(clientId)))
-                except Empty:
-                    self._log.info("clientId {} is empty"
-                                   .format(text(clientId)))
-
-        # self.deleteQueueLock(lock)
+        return self.queue_link.destructiveAudit(direction=
+                                                self.client_direction)

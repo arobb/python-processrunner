@@ -3,9 +3,8 @@ from __future__ import unicode_literals
 from builtins import str as text
 from builtins import dict
 
+import logging
 import time
-
-from multiprocessing import Process, Lock
 
 try:  # Python 2.7
     from Queue import Empty
@@ -15,7 +14,6 @@ except ImportError:  # Python 3.x
 from . import settings
 from .prpipe import _PrPipe
 from .contentwrapper import ContentWrapper
-from .exceptionhandler import HandleAlreadySet
 from .exceptionhandler import HandleNotSet
 
 
@@ -30,128 +28,107 @@ class _PrPipeWriter(_PrPipe):
        Clients register their own queues.
     """
 
-    def __init__(self, pipeHandle=None):
+    def __init__(self, queue, pipeHandle=None, name=None):
         """
         Args:
             pipeHandle (pipe): Pipe to write records to
         """
         # Initialize the parent class
-        super(type(self), self).__init__()
-        self._initializeLogging(__name__)
+        super(type(self), self).__init__(queue=queue,
+                                         subclass_name=__name__,
+                                         queue_direction="destination",
+                                         name=name,
+                                         pipe_handle=pipeHandle)
 
-        self.outboundQueueLock = self.getQueueLock()
+    @staticmethod
+    def queue_pipe_adapter(pipe_name,
+                           pipe_handle,
+                           queue,
+                           queue_lock,
+                           stop_event):
+        """Copy lines from a given pipe handle into a local threading.Queue
 
-        self.pipeHandle = None
-        if pipeHandle is not None:
-            self.setPipeHandle(pipeHandle)
-
-    def setPipeHandle(self, pipeHandle):
-        """Set the outbound pipe handle for us to write to
+        Runs in a separate process, started by __init__. Closes pipe when done
+        reading.
 
         Args:
-            pipeHandle (pipe): An open pipe (subclasses of file, IO.IOBase)
-
-        Raises:
-            HandleAlreadySet
+            pipe_name (string): Name of the pipe we will read from
+            pipe_handle (pipe): Pipe to write to
+            queue (Queue): Queue to read from
+            queue_lock (Lock): Lock used to indicate a write in progress
+            stop_event (Event): Used to determine whether to stop the process
         """
-        if self.pipeHandle is not None:
-            raise HandleAlreadySet
+        logger_name = "{}.queue_pipe_adapter.{}".format(__name__, pipe_name)
+        log = logging.getLogger(logger_name)
+        log.addHandler(logging.NullHandler())
 
-        self._log.info("Setting outbound pipe handle (e.g. open(pipe, 'w'))")
-        self.pipeHandle = pipeHandle
+        log.info("Starting writer process")
+        if pipe_handle.closed:
+            log.warning("Pipe handle is already closed")
+
+        else:
+            while True:
+                try:
+                    # line = queue.get_nowait()
+                    line = queue.get(timeout=0.01)
+
+                    # Extract the content if the line is in a ContentWrapper
+                    if type(line) is ContentWrapper:
+                        pipe_handle.write(line.value)
+                    else:
+                        pipe_handle.write(line)
+
+                    # Signal to the queue that we are done processing the line
+                    queue.task_done()
+
+                    # Exit if we are asked to stop
+                    if stop_event.is_set():
+                        log.info("Asked to stop")
+                        break
+
+                except Empty:
+                    # time.sleep(0.01)
+                    log.debug("No line currently available for {}"
+                              .format(pipe_name))
+
+                    # Exit if we are asked to stop
+                    if stop_event.is_set():
+                        log.info("Asked to stop")
+                        break
+
+        log.info("Sub-process complete")
+
+    def putLine(self, clientId, line):
+        """Adds a line to a given client's Queue
+
+        Args:
+            clientId (string): ID of the client
+            line (string): The content to add to the queue
+        """
+        q = self.getQueue(clientId)
+
+        if type(line) is ContentWrapper:
+            q.put(line)
+        else:
+            q.put(ContentWrapper(line))
 
     def close(self):
-        """Close the outbound queue"""
+        """Close the outbound pipe"""
         if self.pipeHandle is None:
             raise HandleNotSet("_PrPipeWriter output file handle hasn't been "
                                "set, but .close was called")
 
+        # Stop the writer process
+        self.stop_event.set()
+
+        # Wait for the writer process to stop
+        while True:
+            self.process.join(timeout=5)
+            if self.process.exitcode is None:
+                self._log.info("Waiting for {} writer process to stop"
+                               .format(self.name))
+            else:
+                break
+
         return self.pipeHandle.close()
-
-    def publish(self, requireLock=None):
-        """Push messages from client queues to the outbound pipe
-
-        Must be triggered by an external mechanism
-        Typically triggered by getLine or wait
-
-        requireLock (None): Used for compatibility with _PrPipeReader's
-            signature
-        """
-        if self.pipeHandle is None:
-            raise HandleNotSet("_PrPipeWriter.publish called before "
-                               "pipeHandle set")
-
-        # Lock the list of client queues
-        self._log.debug("Trying to get outboundQueueLock")
-        with self.outboundQueueLock:
-            self._log.debug("outboundQueueLock obtained")
-
-            # Iterate throught the list of clients
-            for clientId in list(self.clientQueues.keys()):
-                self._log.debug("Checking for a line from client {} to write"
-                                .format(clientId))
-
-                # Try to get a line from each queue. getLine throws Empty
-                try:
-                    while True:
-                        line = self.getLine(clientId)
-                        self.pipeHandle.write(line)
-                        self._log.debug("Line: '{}'".format(line))
-
-                except Empty:
-                    self._log.debug("Line was empty")
-
-            return True
-
-        return False
-
-    def isEmpty(self, clientId=None):
-        """Checks whether the primary Queue or any clients' Queues are empty
-
-        Returns True ONLY if ALL queues are empty if clientId is None
-        Returns True ONLY if both main queue and specified client queue are
-            empty when clientId is provided
-
-        Args:
-            clientId (string): ID of the client
-
-        Returns:
-            bool
-        """
-        if clientId is not None:
-            empty = self.getQueue(clientId).empty()
-
-        else:
-            empty = True  # Prime the value
-
-            with self.outboundQueueLock:
-                for q in list(self.clientQueues.values()):
-                    empty = empty and q.empty()
-
-        self._log.debug("Reporting pipe empty: {}".format(empty))
-        return empty
-
-    def getLine(self, clientId):
-        """Retrieve a line from a given client's Queue
-
-        Args:
-            clientId (string): ID of the client
-
-        Returns:
-            <element from Queue>
-
-        Raises:
-            Empty
-        """
-        # Throws Empty
-        q = self.getQueue(clientId)
-        line = q.get_nowait()
-        q.task_done()
-
-        self._log.debug("Returning line")
-
-        if type(line) is ContentWrapper:
-            return line.value
-        else:
-            return line
 

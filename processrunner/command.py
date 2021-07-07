@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 from builtins import dict
 from subprocess import PIPE, Popen
 from multiprocessing import Process
+from multiprocessing.managers import BaseManager
 
 import codecs
 import logging
@@ -11,11 +12,11 @@ import time
 from .kitchenpatch import getwriter
 
 from . import settings
-from .queuelink import QueueLink
 from .prpipewriter import _PrPipeWriter
 from .prpipereader import _PrPipeReader
 from .exceptionhandler import ProcessAlreadyStarted
 from .exceptionhandler import ProcessNotStarted
+from .timer import Timer
 
 # Private class only intended to be used by ProcessRunner
 class _Command(object):
@@ -30,7 +31,8 @@ class _Command(object):
                  command,
                  cwd=None,
                  autostart=True,
-                 stdin=None):
+                 stdin=None,
+                 std_queues=None):
         """
         Args:
             command (list): List of strings to pass to subprocess.Popen
@@ -48,13 +50,13 @@ class _Command(object):
         self.stdinRequest = stdin
         self.proc = None  # Will hold a Popen instance
         self.pipes = {
-            'stdout': _PrPipeReader(),
-            'stderr': _PrPipeReader()
+            'stdout': _PrPipeReader(queue=std_queues['stdout'], name='stdout'),
+            'stderr': _PrPipeReader(queue=std_queues['stderr'], name='stderr')
         }
 
         # Only create the stdin pipe entry if we've been asked to set up stdin
         if self.stdinRequest is not None:
-            self.enableStdin()
+            self.enableStdin(queue=std_queues['stdin'], name='stdin')
 
         # Start running if we would like
         if autostart:
@@ -95,12 +97,12 @@ class _Command(object):
         """
         return self.command
 
-    def enableStdin(self):
+    def enableStdin(self, queue):
         """Enable the stdin pipe"""
         if self.stdinRequest is None:
             self.stdinRequest = True
 
-        self.pipes['stdin'] = _PrPipeWriter()
+        self.pipes['stdin'] = _PrPipeWriter(queue=queue, name="stdin")
 
     def start(self):
         """Begin running the target process"""
@@ -160,29 +162,6 @@ class _Command(object):
 
         return self.pipes[procPipeName]
 
-    # def publish(self, requireLock):
-    #     """Force publishing of any pending messages
-    #
-    #     opportunitistic (bool): True to require a lock. Can deadlock. See
-    #         _PrPipeReader.publish for more details.
-    #
-    #     Return bool: True only if all pipes return True"""
-    #     publishedAll = True
-    #
-    #     for procPipeName, pipe in self.pipes.items():
-    #         self._log.debug("Publishing {}".format(procPipeName))
-    #         published = pipe.publish(requireLock=requireLock)
-    #         publishedAll = publishedAll and published
-    #
-    #         if published:
-    #             self._log.debug("Done publishing {}".format(procPipeName))
-    #         else:
-    #             self._log.debug("Publishing {} could not obtain lock"\
-    #                             .format(procPipeName))
-    #
-    #     # Return True only if all pipes published
-    #     return publishedAll
-
     def isQueueEmpty(self, procPipeName, clientId):
         """Check whether the _PrPipe* queues report empty for a given pipe
         and client
@@ -215,6 +194,22 @@ class _Command(object):
             empty = empty and pipe.isEmpty()
 
         return empty
+
+    def is_queue_alive(self, procPipeName):
+        """Check if a queue is still running
+
+        :arg string procPipeName: One of "stdout" or  "stderr"
+        :return bool
+        """
+        return self.getPipe(procPipeName).is_alive()
+
+    def is_queue_drained(self, procPipeName, clientId=None):
+        """Check if a queue could contain data
+
+        :arg string procPipeName: One of "stdout" or  "stderr"
+        :return bool
+        """
+        return self.getPipe(procPipeName).is_drained(clientId=clientId)
 
     def isAlive(self):
         """Check whether the Popen process reports alive
@@ -268,13 +263,21 @@ class _Command(object):
                 if type(pipe) == _PrPipeWriter:
                     continue
 
+                pipe_alive = pipe.is_alive()
+                self._log.debug("Pipe {} is_alive is {}"
+                                .format(pipeName, pipe_alive))
+
                 # Check if the pipe is alive
                 # Any pipe alive will cause us to return True
-                alive = alive or pipe.is_alive()
+                alive = alive or pipe_alive
 
             return alive
 
+        t = Timer(interval_ms=1000)
         while self.poll() is None or isAliveLocal() is True:
+            if t.interval():
+                self._log.debug("Waiting patiently: poll is {}, isAliveLocal"
+                                " is {}".format(self.poll(), isAliveLocal()))
             time.sleep(0.01)
 
         return None

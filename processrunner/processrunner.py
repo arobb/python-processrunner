@@ -14,7 +14,7 @@ import time
 import traceback
 
 import multiprocessing
-from multiprocessing import Process
+from multiprocessing import Process, Event
 from deprecated import deprecated
 
 try:  # Python 2.7
@@ -82,7 +82,7 @@ class ProcessRunner:
         # Shared settings
         settings.init()
         settings.config["AUTHKEY"] = ''.join([random.choice('0123456789ABCDEF')
-                                              for x in range(256)])
+                                     for x in range(256)])
         settings.config["MAX_QUEUE_LENGTH"] = 0  # Maximum length for Queues
         settings.config["ON_POSIX"] = 'posix' in sys.builtin_module_names
 
@@ -108,7 +108,18 @@ class ProcessRunner:
         # Multiprocessing instance used to start process-safe Queues
         self.queueManager = multiprocessing.Manager()
 
-        # Storage for multiprocessing.Queues started on behalf of clients
+        # Baseline multiprocessing.JoinableQueues
+        # These act as a buffer between the actual pipes and one or more
+        # client queues. The QueueLink moves messages between them.
+        stdout_q = self.queueManager\
+            .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
+        stderr_q = self.queueManager\
+            .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
+        self.stdQueues = dict(stdout=stdout_q,
+                              stderr=stderr_q)
+
+        # Storage for multiprocessing.JoinableQueues started on behalf
+        # of clients
         self.pipeClients = dict(stdout=dict(),
                                 stderr=dict())
         self.pipeClientProcesses = dict(stdout=dict(),
@@ -116,7 +127,7 @@ class ProcessRunner:
         if self.stdin is not None:
             self.enableStdin()
 
-        # Instantiate the Popen wrapper
+        # # Instantiate the Popen wrapper
         log.debug("Instantiating the command execution manager subprocess")
         authkey = text(settings.config["AUTHKEY"])
         self.runManager = _CommandManager(authkey=authkey.encode())
@@ -127,7 +138,8 @@ class ProcessRunner:
         self.run = self.runManager._Command(self.command,
                                             cwd=self.cwd,
                                             autostart=self.autostart,
-                                            stdin=self.stdin)
+                                            stdin=self.stdin,
+                                            std_queues=self.stdQueues)
 
         # Register this ProcessRunner
         PROCESSRUNNER_PROCESSES.append(self)
@@ -138,16 +150,6 @@ class ProcessRunner:
         # If we are connected to another instance, store a reference to
         # the next downstream process
         self.downstreamProcessRunner = None
-
-        # Separate process to constantly flush
-        # self.flush_lock = Lock()
-        # self.autoFlushProcess = Process(target=self._flusher,
-        #                                 name="AUTO-FLUSH",
-        #                                 kwargs={"run": self.run})
-        # self.autoFlushProcess.daemon = True
-
-        # if autostart:
-        #     self.autoFlushProcess.start()
 
     def __enter__(self):
         """Support 'with' syntax
@@ -236,9 +238,6 @@ class ProcessRunner:
         if self.run is None:
             pass
 
-        elif not self.run.get("started"):
-            self.run.enableStdin()
-
         elif self.run.get("started"):
             raise ProcessAlreadyStarted("Cannot enable stdin after the process"
                                         "has been started")
@@ -246,8 +245,17 @@ class ProcessRunner:
         if self.stdin is None:
             self.stdin = True
 
+        # Queue for combined storage off the clients
+        stdin_q = self.queueManager\
+            .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
+        self.stdQueues['stdin'] = stdin_q
+
+        # Dicts to hold any clients pushing to this process
         self.pipeClients['stdin'] = dict()
         self.pipeClientProcesses['stdin'] = dict()
+
+        # Activate stdin
+        self.run.enableStdin(queue=stdin_q)
 
     def start(self):
         """Pass through to _Command.start
@@ -261,86 +269,6 @@ class ProcessRunner:
         # self.autoFlushProcess.start()
 
         return self.run.start()
-
-    # def _flusher(self, run):
-    #     """Runs automatically in a subprocess to flush new messages
-    #     """
-    #     timer = Timer(5000)
-    #
-    #     while True:
-    #         try:
-    #             if timer.interval():
-    #                 self._log.warning("Flusher still running")
-    #
-    #             if run.get("started"):
-    #                 run.publish(requireLock=False)
-    #
-    #         # https://stackoverflow.com/a/34718439
-    #         except (socket.error, IOError) as e:
-    #             if e.errno != errno.EPIPE:
-    #                 # Not a broken pipe
-    #                 raise
-    #
-    #             self._log.info("Flush received a BrokenPipeError. The command "
-    #                            "has likely completed.")
-    #
-    #         except EOFError as e:
-    #             self._log.info("Flush received an EOFError. The command "
-    #                            "has likely completed.")
-    #
-    #         finally:
-    #             time.sleep(0.1)
-
-    # def flush(self):
-    #     """Force publishing of any pending messages on attached pipes
-    #
-    #     This will run in a loop until areAllQueuesEmpty() reports True.
-    #
-    #     If this ProcessRunner instance has been piped to a downstream instance,
-    #     flush() will also flush the downstream instance.
-    #     """
-    #     locked = self.flush_lock.acquire(block=False)
-    #     if not locked:
-    #         # self._log.debug("Flush did not acquire a lock:")
-    #         # for line in traceback.format_stack():
-    #         #     self._log.debug(line.strip())
-    #         return
-    #
-    #     try:
-    #         timer = Timer(5000)
-    #         while not self.areAllQueuesEmpty():
-    #             if timer.interval():
-    #                 self._log.warning("Flusher still running")
-    #
-    #             self._publish(requireLock=False)
-    #
-    #             if self.downstreamProcessRunner is not None:
-    #                 self.downstreamProcessRunner.flush()
-    #
-    #     # https://stackoverflow.com/a/34718439
-    #     except (socket.error, IOError) as e:
-    #         if e.errno != errno.EPIPE:
-    #             # Not a broken pipe
-    #             raise
-    #
-    #         self._log.info("Flush received a BrokenPipeError. The command "
-    #                        "has likely completed.")
-    #
-    #     except EOFError as e:
-    #         self._log.info("Flush received an EOFError. The command "
-    #                        "has likely completed.")
-    #
-    #     finally:
-    #         if locked:
-    #             self.flush_lock.release()
-
-    def _publish(self, requireLock):
-        """Force publishing of any pending messages on attached pipes
-
-        requireLock (bool): True to require a lock. Can deadlock. See
-            _PrPipeReader.publish for more details.
-        """
-        self.run.publish(requireLock=requireLock)
 
     def isQueueEmpty(self, procPipeName, clientId):
         """Check whether the pipe manager queues report empty
@@ -440,7 +368,7 @@ class ProcessRunner:
         """
         self.startMapLines()
         self.run.wait()
-        self._join()
+        # self._join()
 
         return self
 
@@ -551,7 +479,8 @@ class ProcessRunner:
         Returns:
             string. Client's queue ID on this pipe
         """
-        q = self.queueManager.Queue(settings.config["MAX_QUEUE_LENGTH"])
+        q = self.queueManager\
+            .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
         clientId = self.run.registerClientQueue(procPipeName, q)
         self.pipeClients[procPipeName][clientId] = q
 
@@ -618,11 +547,11 @@ class ProcessRunner:
     def mapLines(self, func, procPipeName):
         """Run a function against each line presented by one pipe manager
 
-        Returns a reference to a dict that can be used to monitor the status of
-        the function. When the process is dead, the queues are empty, and all
-        lines are processed, the dict will be updated. This can be used as a
-        blocking mechanism by functions invoking mapLines.
-        Status dict format: {"complete":bool}
+        Returns a multiprocessing.Event that can be used to monitor the status
+        of the function. When the process is dead, the queues are empty, and
+        all lines are processed, the Event will be set to True. This can be
+        used as a blocking mechanism by functions invoking mapLines, by using
+        Event.wait().
 
         Args:
             func (function): A function that takes one parameter, the line
@@ -630,7 +559,7 @@ class ProcessRunner:
             procPipeName (string): One of "stdout" or "stderr"
 
         Returns:
-            dict
+            multiprocessing.Event
         """
 
         """
@@ -639,37 +568,50 @@ class ProcessRunner:
         way.
         """
         clientId, clientQ = self.registerForClientQueue(procPipeName)
-        status = dict(complete=False)
+        complete = Event()
+        self._log.debug("Registering mapLines client {} for {}"
+                        .format(clientId, procPipeName))
 
-        def doWrite(run, func, status, clientId, procPipeName):
-            self._log.info("Starting doWrite for " + procPipeName)
+        def doWrite(run, func, complete, clientId, procPipeName):
+            logger_name = "{}.mapLines.{}".format(__name__, clientId)
+            log = logging.getLogger(logger_name)
+            log.addHandler(logging.NullHandler())
+            log.info("Starting doWrite client {} for {}"
+                     .format(clientId, procPipeName))
 
             try:
                 # Continue while there MIGHT be data to read
                 while run.isAlive() \
-                        or not run.isQueueEmpty(procPipeName, clientId):
-                    self._log.debug(0, "might be data to read in " + procPipeName)
+                        or not run.is_queue_drained(procPipeName, clientId):
+                    log.debug("Trying to get line from {} for client {}"
+                              .format(procPipeName, clientId))
 
                     # Continue while we KNOW THERE IS data to read
                     while True:
                         try:
                             line = run.getLineFromPipe(procPipeName, clientId)
+                            log.debug("Writing line to user function")
                             func(line)
                         except Empty:
                             break
 
-                    time.sleep(0.01)
+                    time.sleep(0.001)
 
-                status['complete'] = True
+            except Exception as e:
+                log.warning("Caught exception: {}".format(e))
+                ExceptionHandler(e)
 
             finally:
-                pass
+                log.info("Ending doWrite client {} for {}"
+                         .format(clientId, procPipeName))
+                run.unRegisterClientQueue(procPipeName, clientId)
+                complete.set()
 
         client = Process(target=doWrite,
                          name="mapLines-{}".format(procPipeName),
                          kwargs=dict(run=self.run,
                                      func=func,
-                                     status=status,
+                                     complete=complete,
                                      clientId=clientId,
                                      procPipeName=procPipeName))
         client.daemon = True
@@ -677,7 +619,7 @@ class ProcessRunner:
         # Store the process so it can potentially be re-joined
         self.pipeClientProcesses[procPipeName][text(clientId)] = client
 
-        return status
+        return complete
 
     # Eliminates a potential race condition in mapLines if two are started on
     #   the same pipe
@@ -716,6 +658,9 @@ class ProcessRunner:
         clientIds = dict()
         if procPipeName is None:
             for pipeName in list(self.pipeClients):
+                if pipeName == "stdin":
+                    continue
+
                 clientIds[pipeName], q = self.registerForClientQueue(pipeName)
                 self._log.debug("Registered {} for client {}"
                                 .format(pipeName, clientIds[pipeName]))
@@ -739,6 +684,12 @@ class ProcessRunner:
             complete = complete and not self.isAlive()  # True & !
 
             for pipeName, clientId in list(clientIds.items()):
+                # Check if the pipe enqueue process is still running
+                # This fixes failures with very large content from
+                # test_processrunner_onem_check_content (and the emoji one)
+                complete = complete and \
+                    not self.run.is_queue_alive(pipeName)
+
                 # Check status of queues
                 # Target alive, queues w content:
                 #   complete = False & False == False
@@ -748,23 +699,45 @@ class ProcessRunner:
                 #   complete = True & False == False
                 # Target stopped, queues empty:
                 #   complete = True & True == True
+                self._log.debug("Checking if {} client {} is empty"
+                                .format(pipeName, clientId))
                 complete = complete and self.isQueueEmpty(pipeName, clientId)
 
-            self._log.debug("Process complete status: {}".format(complete))
+            # Try to use the drained feature
+            for pipeName in clientIds.keys():
+                self._log.debug("Checking if {} is drained".format(pipeName))
+                complete = complete and self.run.is_queue_drained(pipeName)
+
+            self._log.info("Process complete status: {}".format(complete))
 
             return complete
 
         # Main loop to pull everything off our queues
-        while not checkComplete(self, clientIds):
+        timer = Timer(interval_ms=5000)
+        while True:
+            if timer.interval():
+                print("Waiting for {} seconds".format(timer.lap()/1000))
+
             for pipeName, clientId in list(clientIds.items()):
                 while True:
                     try:
+                        self._log.debug("Trying to read line from {} client {}"
+                                        .format(pipeName, clientId))
+
                         line = self.getLineFromPipe(pipeName, clientId) \
                             .rstrip('\n')
+
+                        self._log.debug("Got line of length {} from {} client"
+                                        " {}".format(len(line),
+                                                     pipeName,
+                                                     clientId))
                         outputList.append(line)
                     except Empty:
                         break
 
-            time.sleep(0.01)
+            if checkComplete(self, clientIds):
+                break
+            else:
+                time.sleep(0.001)
 
         return outputList

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+from builtins import str as text
+import multiprocessing
 import os
 import sys
 import time
@@ -10,6 +12,7 @@ from tempfile import NamedTemporaryFile
 
 from tests.tests import context
 from tests.tests.spinner import Spinner
+from processrunner.timer import Timer
 from processrunner import ProcessRunner
 from processrunner import runCommand
 from processrunner.exceptionhandler import ProcessAlreadyStarted
@@ -44,22 +47,30 @@ class ProcessRunnerTestCase(unittest.TestCase):
 
 
 class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
-
     @parameterized.expand([
         [True, False],  # Autostart, no need to manually trigger start
         [False, True]   # Trigger manual start at A
     ])
     def test_processrunner_correct_stdout_count(self, autostart, manualstart):
-        testLen = 10000
+        testLen = 1000
         command = [sys.executable, self.sampleCommandPath, "--lines", "{}".format(testLen), "--block", "1", "--sleep", "0"]
+        t = Timer(interval_ms=5000)
+        print("Before with-as time: {}ms".format(t.lap()))
         with ProcessRunner(command, autostart=autostart) as proc:
+            print("After with-as time: {}ms".format(t.lap()))
+
             # Verify start works when placed before collectLines
             if manualstart:
                 proc.start()
 
             # Store process output
+            print("Before collectLines time: {}ms".format(t.lap()))
+
             output = proc.collectLines()
+            print("Following collectLines time: {}ms".format(t.lap()))
+
             result = proc.wait().poll()
+            print("Following proc.wait().poll() time: {}ms".format(t.lap()))
 
         length = len(output)
 
@@ -178,12 +189,48 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         command = ["echo", textIn]
 
         with ProcessRunner(command) as proc:
-            time.sleep(30)  # TODO: < Fix the need for this
             textOut = proc.collectLines()[0]
 
         self.assertEqual(textIn,
                          textOut,
                          "Returned unicode text is not equivalent: In {}, Out {}".format(textIn, textOut))
+
+    def test_processrunner_check_emoji_content_multiple_clients(self):
+        """Verifies compatibility with multiple readers"""
+        textIn = "many😂" * 5
+        command = ["echo", textIn]
+
+        m = multiprocessing.Manager()
+
+        client1 = m.list()
+        client2 = m.list()
+
+        def f1(line):
+            client1.append(text(line).strip())
+
+        def f2(line):
+            client2.append(text(line).strip())
+
+        with ProcessRunner(command, autostart=False) as proc:
+            ml1 = proc.mapLines(f1, "stdout")
+            ml2 = proc.mapLines(f2, "stdout")
+
+            proc.start()
+            proc.wait()  # Wait for the process to complete
+
+            # ml1.wait()  # Wait for mapLines to complete
+            # ml2.wait()  # Wait for mapLines to complete
+
+            textOut1 = client1[0]
+            textOut2 = client2[0]
+
+        self.assertEqual(textIn,
+                         textOut1,
+                         "Returned unicode text from client1 is not equivalent: In {}, Out {}".format(textIn, textOut1))
+
+        self.assertEqual(textIn,
+                         textOut2,
+                         "Returned unicode text from client2 is not equivalent: In {}, Out {}".format(textIn, textOut2))
 
     def test_processrunner_check_onem_emoji_content(self):
         """Checks the integrity of the inter-process locking mechanisms with unicode text"""
@@ -195,7 +242,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             command = ["cat", tempFile.name]
 
             with ProcessRunner(command) as proc:
-                time.sleep(30)  # TODO: < Fix the need for this
+                # time.sleep(30)  # TODO: < Fix the need for this
                 fullText = proc.collectLines()
                 textOut = fullText[0]  # < Sometimes fails with index out of range
 
@@ -217,4 +264,4 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromTestCase(ProcessRunnerCoreTestCase)
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    unittest.TextTestRunner(verbosity=3).run(suite)

@@ -73,13 +73,13 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
 
                 # startMapLines called in ProcessRunner.wait and ProcessRunner.start
                 # This doesn't call ProcessRunner.start...
-                time.sleep(.1)
+                time.sleep(0.1)  # 0.1 seems to reliably work, 0.01 reliably breaks
 
                 # Try to see if an alternative to wait() will cause the same issue
-                # proc.wait()
-                proc.startMapLines()
-                while proc.poll() is None:
-                    time.sleep(.1)
+                proc.wait()
+                # proc.startMapLines()
+                # while proc.poll() is None:
+                #     time.sleep(0.01)
 
                 result = proc.poll()
 
