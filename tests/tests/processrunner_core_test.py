@@ -84,14 +84,6 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         # Verify the test script exit code was 0
         self.assertEqual(result, 0, 'Test script return code not zero')
 
-    def test_processrunner_collectLines_raise_NotStarted(self):
-        """Ensure ProcessNotStarted is raised when using collectLines before
-        start()"""
-        command = ["echo", "bonjour"]
-        with self.assertRaises(ProcessNotStarted):
-            with ProcessRunner(command, autostart=False) as proc:
-                output = proc.collectLines()
-
     @parameterized.expand([
         [True, True, False],
         [False, True, True]
@@ -218,8 +210,8 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             proc.start()
             proc.wait()  # Wait for the process to complete
 
-            # ml1.wait()  # Wait for mapLines to complete
-            # ml2.wait()  # Wait for mapLines to complete
+            ml1.wait()  # Wait for mapLines to complete
+            ml2.wait()  # Wait for mapLines to complete
 
             textOut1 = client1[0]
             textOut2 = client2[0]

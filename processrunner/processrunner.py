@@ -60,7 +60,8 @@ class ProcessRunner:
                  command,
                  cwd=None,
                  autostart=True,
-                 stdin=None):
+                 stdin=None,
+                 log_name=None):
         """Easily execute external processes
 
         Can be used in a blocking or non-blocking manner
@@ -76,6 +77,7 @@ class ProcessRunner:
                 process or wait for the user to call start()
             stdin (pipe): File-like object to read from
         """
+        self.log_name = log_name
         self._initializeLogging()
         log = self._log
 
@@ -139,7 +141,8 @@ class ProcessRunner:
                                             cwd=self.cwd,
                                             autostart=self.autostart,
                                             stdin=self.stdin,
-                                            std_queues=self.stdQueues)
+                                            std_queues=self.stdQueues,
+                                            log_name=self.log_name)
 
         # Register this ProcessRunner
         PROCESSRUNNER_PROCESSES.append(self)
@@ -150,6 +153,9 @@ class ProcessRunner:
         # If we are connected to another instance, store a reference to
         # the next downstream process
         self.downstreamProcessRunner = None
+
+        # Event to help mapLines stop gracefully
+        self.stop_event = Event()
 
     def __enter__(self):
         """Support 'with' syntax
@@ -455,8 +461,13 @@ class ProcessRunner:
         """Shutdown the process managers. Run after verifying terminate/kill
         has destroyed any child processes
 
-        Runs `terminate` in case it hasn't already been run"""
-        self.terminate()
+        Runs `terminate` in case it hasn't already been run
+        """
+        # Tell mapLines to stop
+        self.stop_event.set()
+
+        # self.terminate()
+        self.run.stop()
 
         try:
             self.closeStdin()
@@ -572,7 +583,7 @@ class ProcessRunner:
         self._log.debug("Registering mapLines client {} for {}"
                         .format(clientId, procPipeName))
 
-        def doWrite(run, func, complete, clientId, procPipeName):
+        def doWrite(run, func, complete, clientId, procPipeName, stop_event):
             logger_name = "{}.mapLines.{}".format(__name__, clientId)
             log = logging.getLogger(logger_name)
             log.addHandler(logging.NullHandler())
@@ -589,13 +600,24 @@ class ProcessRunner:
                     # Continue while we KNOW THERE IS data to read
                     while True:
                         try:
-                            line = run.getLineFromPipe(procPipeName, clientId)
+                            line = run.getLineFromPipe(procPipeName,
+                                                       clientId,
+                                                       timeout=0.05)
                             log.debug("Writing line to user function")
                             func(line)
                         except Empty:
+                            log.debug("No lines to get from {} for client {}"
+                                      .format(procPipeName, clientId))
                             break
 
-                    time.sleep(0.001)
+                        # Exit from the inner loop if the stop event is set
+                        if stop_event.is_set():
+                            break
+
+                    # Exit from the inner loop if the stop event is set
+                    if stop_event.is_set():
+                        log.debug("Stopping doWrite")
+                        break
 
             except Exception as e:
                 log.warning("Caught exception: {}".format(e))
@@ -604,16 +626,34 @@ class ProcessRunner:
             finally:
                 log.info("Ending doWrite client {} for {}"
                          .format(clientId, procPipeName))
-                run.unRegisterClientQueue(procPipeName, clientId)
+
+                try:
+                    # This will throw an EOFError when the runManager has
+                    # stopped already
+                    run.unRegisterClientQueue(procPipeName, clientId)
+
+                except EOFError:
+                    log.debug("Caught EOFError while stopping doWrite for"
+                              " client {} for {}"
+                              .format(clientId, procPipeName))
+
                 complete.set()
 
+        # Name the process
+        if self.log_name is not None:
+            process_name = "mapLines-{}-{}".format(self.log_name,
+                                                   procPipeName)
+        else:
+            process_name = "mapLines-{}".format(procPipeName)
+
         client = Process(target=doWrite,
-                         name="mapLines-{}".format(procPipeName),
+                         name=process_name,
                          kwargs=dict(run=self.run,
                                      func=func,
                                      complete=complete,
                                      clientId=clientId,
-                                     procPipeName=procPipeName))
+                                     procPipeName=procPipeName,
+                                     stop_event=self.stop_event))
         client.daemon = True
 
         # Store the process so it can potentially be re-joined
@@ -639,7 +679,7 @@ class ProcessRunner:
 
     def collectLines(self, procPipeName=None):
         """Retrieve output lines as a list for one or all pipes from the
-        process
+        process. Will start the process if it is not already running!
 
         Kwargs:
             procPipeName (string): One of "stdout" or "stderr"
@@ -649,10 +689,22 @@ class ProcessRunner:
         """
         outputList = []
 
-        if not self.run.get("started"):
-            raise ProcessNotStarted("Target command hasn't started yet; please"
-                                    " call ProcessRunner.start() to start the "
-                                    "target process")
+        # if not self.run.get("started"):
+        #     raise ProcessNotStarted("Target command hasn't started yet; please"
+        #                             " call ProcessRunner.start() to start the "
+        #                             "target process")
+
+        # Warn if we've started with other clients attached; we can't reliably
+        # get output from the process if output has started flowing to other
+        # consumers.
+        if self.run.get("started") and len(self.pipeClientProcesses) > 0:
+            self._log.warning("Other consumers are already attached and the"
+                              " process has started. Some data may have"
+                              " already been processed and will not be"
+                              " available from this method.")
+
+        elif not self.run.get("started"):
+            self.start()
 
         # Register for client IDs from all appropriate pipe managers
         clientIds = dict()

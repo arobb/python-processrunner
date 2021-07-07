@@ -28,7 +28,7 @@ class _PrPipeReader(_PrPipe):
        Clients register their own queues.
     """
 
-    def __init__(self, queue, pipeHandle=None, name=None):
+    def __init__(self, queue, pipeHandle=None, name=None, log_name=None):
         """
         Args:
             pipeHandle (pipe): Pipe to monitor for records
@@ -38,11 +38,8 @@ class _PrPipeReader(_PrPipe):
                                          subclass_name=__name__,
                                          queue_direction="source",
                                          name=name,
-                                         pipe_handle=pipeHandle)
-
-        # Store the queue in the correct orientation in the queue link
-        # self.queue_link.registerQueue(queue_proxy=self.queue,
-        #                               direction="source")
+                                         pipe_handle=pipeHandle,
+                                         log_name=log_name)
 
     @staticmethod
     def queue_pipe_adapter(pipe_name,
@@ -88,11 +85,13 @@ class _PrPipeReader(_PrPipe):
 
         log.info("Sub-process complete")
 
-    def getLine(self, clientId):
+    def getLine(self, clientId, timeout=-1):
         """Retrieve a line from a given client's Queue
 
         Args:
             clientId (string): ID of the client
+            timeout (int): <0 for get_nowait behavior, otherwise use
+                           get(timeout=timeout)
 
         Returns:
             <element from Queue>
@@ -104,7 +103,15 @@ class _PrPipeReader(_PrPipe):
 
         # Throws Empty
         q = self.getQueue(clientId)
-        line = q.get_nowait()
+
+        # Throws Empty
+        if timeout < 0:
+            line = q.get_nowait()
+
+        else:
+            line = q.get(timeout=timeout)
+
+        # Mark the item as retrieved
         q.task_done()
 
         self._log.debug("Returning line to client {}".format(clientId))

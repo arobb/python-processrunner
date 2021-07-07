@@ -55,16 +55,20 @@ def validate_direction(func):
 
 
 class QueueLink(object):
-    def __init__(self, name=None):
+    def __init__(self, name=None, log_name=None):
         """Manages the pull/push with PrPipe queues"""
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
         self.name = name
+        self.log_name = log_name
 
         self._initializeLogging()
 
         # Indicate whether we have ever been started
         self.started = Event()
+
+        # Indicate whether we have been asked to stop
+        self.stopped = Event()
 
         # List of locks allows decoupled IO while also preventing the set of
         # queues from changing during IO operations
@@ -95,11 +99,18 @@ class QueueLink(object):
         else:
             name = "{}.{}".format(__name__, self.name)
 
+        if self.log_name is not None:
+            name = "{}.{}".format(name, self.log_name)
+
         self._log = logging.getLogger(name)
         self.addLoggingHandler(logging.NullHandler())
 
     def addLoggingHandler(self, handler):
         self._log.addHandler(handler)
+
+    def stop(self):
+        """Use to stop somewhat gracefully"""
+        self.stopPublishers()
 
     @staticmethod
     def publisher(stop_event,
@@ -123,8 +134,10 @@ class QueueLink(object):
             try:
                 log.debug("Trying to get line from source in pair {}"
                           .format(source_id))
-                # line = source_queue.get_nowait()
-                line = source_queue.get(timeout=0.01)
+                line = source_queue.get(timeout=0.05)
+
+                # TODO: Remove this line
+                # log.info("Line in publisher: {}".format(line.value))
 
                 for dest_id, dest_queue in dest_queues_dict.items():
                     log.info("Writing line from source {} to dest {}"
@@ -140,7 +153,6 @@ class QueueLink(object):
                     return
 
             except Empty:
-                # time.sleep(0.001)
                 log.debug("No lines to get from source in pair {}"
                           .format(source_id))
 
@@ -276,8 +288,15 @@ class QueueLink(object):
         self._log.info("Starting queue link for source {} to {}"
                        .format(source_id, destination_names))
 
+        # Name the process
+        if self.log_name is not None:
+            process_name = "ClientPublisher-{}-{}".format(self.log_name,
+                                                          source_id)
+        else:
+            process_name = "ClientPublisher-{}".format(source_id)
+
         proc = Process(target=self.publisher,
-                       name="ClientPublisher-{}".format(source_id),
+                       name=process_name,
                        kwargs={"pipe_name": self.name,
                                "stop_event": stop_event,
                                "source_id": source_id,

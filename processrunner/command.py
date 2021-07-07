@@ -7,6 +7,7 @@ from multiprocessing.managers import BaseManager
 
 import codecs
 import logging
+import signal
 import time
 
 from .kitchenpatch import getwriter
@@ -32,7 +33,8 @@ class _Command(object):
                  cwd=None,
                  autostart=True,
                  stdin=None,
-                 std_queues=None):
+                 std_queues=None,
+                 log_name=None):
         """
         Args:
             command (list): List of strings to pass to subprocess.Popen
@@ -44,19 +46,28 @@ class _Command(object):
         """
         self._initializeLogging()
 
+        # Identify this Command on the log feed
+        self.log_name = log_name
+        if self.log_name is not None:
+            self._log.info("log_name is {}".format(self.log_name))
+
         self.started = False
         self.command = command
         self.cwd = cwd
         self.stdinRequest = stdin
         self.proc = None  # Will hold a Popen instance
         self.pipes = {
-            'stdout': _PrPipeReader(queue=std_queues['stdout'], name='stdout'),
-            'stderr': _PrPipeReader(queue=std_queues['stderr'], name='stderr')
+            'stdout': _PrPipeReader(queue=std_queues['stdout'],
+                                    name='stdout',
+                                    log_name=self.log_name),
+            'stderr': _PrPipeReader(queue=std_queues['stderr'],
+                                    name='stderr',
+                                    log_name=self.log_name)
         }
 
         # Only create the stdin pipe entry if we've been asked to set up stdin
         if self.stdinRequest is not None:
-            self.enableStdin(queue=std_queues['stdin'], name='stdin')
+            self.enableStdin(queue=std_queues['stdin'])
 
         # Start running if we would like
         if autostart:
@@ -102,7 +113,9 @@ class _Command(object):
         if self.stdinRequest is None:
             self.stdinRequest = True
 
-        self.pipes['stdin'] = _PrPipeWriter(queue=queue, name="stdin")
+        self.pipes['stdin'] = _PrPipeWriter(queue=queue,
+                                            name="stdin",
+                                            log_name=self.log_name)
 
     def start(self):
         """Begin running the target process"""
@@ -144,6 +157,33 @@ class _Command(object):
             self.pipes["stdin"].setPipeHandle(wrappedStdin)
 
         return self.started
+
+    def stop(self, timeout=0.5):
+        """Attempt a graceful shutdown
+
+        :argument string timeout: How long to wait for the process to exit in
+                                  seconds
+        """
+        # Send a SIGINT to the process
+        if self.isAlive():
+            self._log.info("Process is running, sending SIGINT")
+            self.proc.send_signal(signal.SIGINT)
+
+        t = Timer(timeout)
+        while self.isAlive():
+            self._log.info("Waiting for process to exit")
+            time.sleep(0.001)
+
+            # When we've crossed the timeout, terminate the process
+            if t.interval():
+                self._log.info("Process took too long, terminating after {}"
+                               " seconds".format(timeout))
+                self.terminate()
+
+        # Send a shutdown request to all the pipes
+        for pipe_name, pipe in self.pipes.items():
+            self._log.debug("Stopping pipe manager for {}".format(pipe_name))
+            pipe.stop()
 
     def getPipe(self, procPipeName):
         """Retrieve a _PrPipe manager instance by pipe name
@@ -346,7 +386,7 @@ class _Command(object):
 
         return None
 
-    def getLineFromPipe(self, procPipeName, clientId):
+    def getLineFromPipe(self, procPipeName, clientId, timeout=-1):
         """Retrieve a line from a pipe manager
 
         Throws Empty if no lines are available.
@@ -361,7 +401,7 @@ class _Command(object):
         Raises:
             Empty
         """
-        line = self.getPipe(procPipeName).getLine(clientId)
+        line = self.getPipe(procPipeName).getLine(clientId, timeout=timeout)
         return line
 
     def destructiveAudit(self):

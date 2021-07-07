@@ -28,7 +28,7 @@ class _PrPipeWriter(_PrPipe):
        Clients register their own queues.
     """
 
-    def __init__(self, queue, pipeHandle=None, name=None):
+    def __init__(self, queue, pipeHandle=None, name=None, log_name=None):
         """
         Args:
             pipeHandle (pipe): Pipe to write records to
@@ -38,7 +38,8 @@ class _PrPipeWriter(_PrPipe):
                                          subclass_name=__name__,
                                          queue_direction="destination",
                                          name=name,
-                                         pipe_handle=pipeHandle)
+                                         pipe_handle=pipeHandle,
+                                         log_name=log_name)
 
     @staticmethod
     def queue_pipe_adapter(pipe_name,
@@ -70,13 +71,20 @@ class _PrPipeWriter(_PrPipe):
             while True:
                 try:
                     # line = queue.get_nowait()
-                    line = queue.get(timeout=0.01)
+                    line = queue.get(timeout=0.05)
+
+                    # TODO: Delete this line
+                    # log.debug("Line for {}: '{}'".format(pipe_name, line))
 
                     # Extract the content if the line is in a ContentWrapper
+                    log.info("Writing line to {}".format(pipe_name))
                     if type(line) is ContentWrapper:
                         pipe_handle.write(line.value)
                     else:
                         pipe_handle.write(line)
+
+                    # Flush the pipe to make sure it gets to the process
+                    pipe_handle.flush()
 
                     # Signal to the queue that we are done processing the line
                     queue.task_done()
@@ -113,7 +121,7 @@ class _PrPipeWriter(_PrPipe):
             q.put(ContentWrapper(line))
 
     def close(self):
-        """Close the outbound pipe"""
+        """Close the inbound pipe"""
         if self.pipeHandle is None:
             raise HandleNotSet("_PrPipeWriter output file handle hasn't been "
                                "set, but .close was called")

@@ -23,7 +23,8 @@ class _PrPipe(object):
                  subclass_name,
                  queue_direction,
                  name=None,
-                 pipe_handle=None):
+                 pipe_handle=None,
+                 log_name=None):
         """PrPipe abstract implementation
 
         :argument string queue_direction: Indicate direction relative to pipe;
@@ -42,6 +43,9 @@ class _PrPipe(object):
         # Name of the subclass (PrPipeReader, PrPipeWriter)
         self.subclass_name = subclass_name
 
+        # Additional naming for differentiating multiple instances
+        self.log_name = log_name
+
         # Initialize the logger
         self._initializeLogging()
 
@@ -53,6 +57,9 @@ class _PrPipe(object):
         # Whether we have ever been started
         self.started = Event()
 
+        # Whether we have been asked to stop
+        self.stopped = Event()
+
         # Whether the queue adapter process should stop
         self.stop_event = Event()
 
@@ -61,7 +68,8 @@ class _PrPipe(object):
         self.queue = queue
 
         # Mechanism to connect the baseline queue and client queues
-        self.queue_link = QueueLink(self.name)
+        self.queue_link = QueueLink(self.name,
+                                    log_name=self.log_name)
 
         # Store the queue in the correct orientation in the queue link
         self.queue_link.registerQueue(queue_proxy=self.queue,
@@ -94,10 +102,13 @@ class _PrPipe(object):
                 return
 
         # Make a helpful log name
+        log_name = self.subclass_name
+
+        if self.log_name is not None:
+            log_name = "{}.{}".format(log_name, self.log_name)
+
         if self.name is None:
-            log_name = self.subclass_name
-        else:
-            log_name = "{}.{}".format(self.subclass_name, self.name)
+            log_name = "{}.{}".format(log_name, self.name)
 
         # Logging
         self._log = logging.getLogger(log_name)
@@ -123,6 +134,9 @@ class _PrPipe(object):
 
         # Process name
         process_name = "{}-{}".format(self.subclass_name, self.name)
+
+        if self.log_name is not None:
+            process_name = "{}-{}".format(process_name, self.log_name)
 
         self._log.debug("Setting {} adapter process for {} pipe handle"
                         .format(self.subclass_name, self.name))
@@ -158,6 +172,27 @@ class _PrPipe(object):
             QueueProxy
         """
         return self.queue_link.getQueue(clientId)
+
+    def stop(self):
+        """Stop the adapter and queue link.
+
+        Does not force a drain of the queues.
+        """
+        # Mark that we have been asked to stop
+        self.stopped.set()
+
+        # Stop the adapter
+        self.stop_event.set()
+
+        while True:
+            self.process.join(timeout=5)
+            if self.process.exitcode is None:
+                self._log.info("Waiting for adapter to stop")
+            else:
+                break
+
+        # Stop the queue link
+        self.queue_link.stop()
 
     def isEmpty(self, clientId=None):
         """Checks whether the primary Queue or any clients' Queues are empty
