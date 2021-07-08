@@ -7,13 +7,15 @@ from builtins import dict
 
 import errno
 import logging
+import multiprocessing
+import os
 import random
 import socket
 import sys
 import time
 import traceback
 
-import multiprocessing
+from copy import deepcopy
 from multiprocessing import Process, Event
 from deprecated import deprecated
 
@@ -25,6 +27,7 @@ except ImportError:  # Python 3.x
 from . import settings
 from .timer import Timer
 from .which import which
+from .writeout import writeOut
 from .commandmanager import _CommandManager
 from .exceptionhandler import CommandNotFound
 from .exceptionhandler import ProcessAlreadyStarted
@@ -130,7 +133,11 @@ class ProcessRunner:
         if self.stdin is not None:
             self.enableStdin()
 
-        # # Instantiate the Popen wrapper
+        # Storage for file handles opened on behalf of users who want output
+        # directed to files
+        self.output_file_handles = dict()  # [file path] = handle
+
+        # Instantiate the Popen wrapper
         log.debug("Instantiating the command execution manager subprocess")
         authkey = text(settings.config["AUTHKEY"])
         self.runManager = _CommandManager(authkey=authkey.encode())
@@ -482,6 +489,13 @@ class ProcessRunner:
         self.queueManager.shutdown()
         self.runManager.shutdown()
 
+        # Close any output handles
+        for file_path, handle in list(self.output_file_handles.items()):
+            self._log.debug("Closing handle for output file {}"
+                            .format(file_path))
+            handle.flush()
+            handle.close()
+
         PROCESSRUNNER_PROCESSES.remove(self)
 
     def registerForClientQueue(self, procPipeName):
@@ -792,3 +806,56 @@ class ProcessRunner:
         manager.shutdown()
 
         return output_list_final
+
+    def write(self, file_path, procPipeName=None, append=False):
+        """Specify a file to direct output from the process
+
+        :argument string file_path: Path to a file that should receive output
+        :argument string procPipeName: Outbound pipe to reference (stdout,
+                                       stderr)
+        :argument bool append: Whether to append to an existing file. Default
+                               is to truncate the file
+
+        :return ProcessRunner
+        """
+        file_path = os.path.abspath(file_path)
+
+        # Open a file handle with or without truncation
+        if append:
+            file_handle = open(file_path, 'a')
+            self._log.info("Opened for writing (append): {}".format(file_path))
+        else:
+            file_handle = open(file_path, 'w')
+            file_handle.truncate()
+            self._log.info("Opened for writing (truncate): {}"
+                           .format(file_path))
+
+        # Writer function
+        func = writeOut(file_handle, outputPrefix="")
+
+        # Generate a list of valid pipe names (e.g. skipping stdin)
+        valid_names = list()
+        for name in list(self.pipeClients.keys()):
+            if name == "stdin":
+                continue
+
+            valid_names.append(name)
+
+        # Register only for the requested pipe
+        if procPipeName:
+            if procPipeName not in valid_names:
+                raise KeyError("{} is not a valid output pipe name. ({})"
+                               .format(procPipeName, ", ".join(valid_names)))
+
+            # Register to have lines written directly to the file
+            self.mapLines(func, procPipeName)
+
+        # Register for all available valid pipes
+        else:
+            for pipe_name in valid_names:
+                self.mapLines(func, pipe_name)
+
+        # Register the file handle in self.output_file_handles
+        self.output_file_handles[file_path] = file_handle
+
+        return self

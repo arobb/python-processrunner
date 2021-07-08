@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 from builtins import str as text
 
+import multiprocessing
 import os
 import sys
 import time
@@ -40,10 +41,13 @@ def printQsize(proc):
 
 class ProcessRunnerTestCase(unittest.TestCase):
     def setUp(self):
+        self.sampleCommandDir = os.path.join(os.path.dirname(__file__), "..")
         sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
 
         self.spinner = Spinner()
+
+        self.manager = multiprocessing.Manager()
 
 
 class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
