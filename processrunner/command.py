@@ -394,6 +394,8 @@ class _Command(object):
         Args:
             procPipeName (string): One of "stdout" or "stderr"
             clientId (string): ID of the client queue on this pipe manager
+            timeout (float): <0 for get_nowait behavior, otherwise use
+                           get(timeout=timeout); in seconds; default -1
 
         Returns:
             string. Line from specified client queue
@@ -401,7 +403,8 @@ class _Command(object):
         Raises:
             Empty
         """
-        line = self.getPipe(procPipeName).getLine(clientId, timeout=timeout)
+        line = self.getPipe(procPipeName).getLine(clientId=clientId,
+                                                  timeout=timeout)
         return line
 
     def destructiveAudit(self):

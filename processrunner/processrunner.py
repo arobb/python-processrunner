@@ -87,6 +87,7 @@ class ProcessRunner:
                                      for x in range(256)])
         settings.config["MAX_QUEUE_LENGTH"] = 0  # Maximum length for Queues
         settings.config["ON_POSIX"] = 'posix' in sys.builtin_module_names
+        settings.config["NOTIFICATION_DELAY"] = 1  # Seconds for delay notices
 
         # Verify the command is a list of strings
         # Throws a TypeError if this validation fails
@@ -363,6 +364,10 @@ class ProcessRunner:
             self._log.debug("Trying to close stdin, but the handle was never "
                            "set")
 
+        except IOError:
+            self._log.debug("Trying to close stdin, but the process has"
+                            " already stopped")
+
     def wait(self):
         """Block until the Popen process exits
 
@@ -528,7 +533,7 @@ class ProcessRunner:
         if text(clientId) in self.pipeClientProcesses:
             self.pipeClientProcesses.pop(text(clientId))
 
-    def getLineFromPipe(self, procPipeName, clientId):
+    def getLineFromPipe(self, procPipeName, clientId, timeout=-1):
         """Retrieve a line from a pipe manager
 
         Throws Empty if no lines are available.
@@ -536,6 +541,8 @@ class ProcessRunner:
         Args:
             procPipeName (string): One of "stdout" or "stderr"
             clientId (string): ID of the client queue on this pipe manager
+            timeout (float): <0 for get_nowait behavior, otherwise use
+                           get(timeout=timeout); in seconds; default -1
 
         Returns:
             string. Line from specified client queue
@@ -543,7 +550,9 @@ class ProcessRunner:
         Raises:
             Empty
         """
-        line = self.run.getLineFromPipe(procPipeName, clientId)
+        line = self.run.getLineFromPipe(procPipeName=procPipeName,
+                                        clientId=clientId,
+                                        timeout=timeout)
         return line
 
     def destructiveAudit(self):
@@ -580,8 +589,8 @@ class ProcessRunner:
         """
         clientId, clientQ = self.registerForClientQueue(procPipeName)
         complete = Event()
-        self._log.debug("Registering mapLines client {} for {}"
-                        .format(clientId, procPipeName))
+        self._log.info("Registering mapLines client {} for {}"
+                       .format(clientId, procPipeName))
 
         def doWrite(run, func, complete, clientId, procPipeName, stop_event):
             logger_name = "{}.mapLines.{}".format(__name__, clientId)
@@ -666,12 +675,14 @@ class ProcessRunner:
     # All client queues are registered at the beginning of the call to
     #   mapLines, so we can now start the clients sequentially without any
     #   possible message loss
-    def startMapLines(self):
+    def startMapLines(self, force=False):
         """Start mapLines child processes
 
         Triggered by wait(), so almost never needs to be called directly.
         """
-        if self.mapLinesStarted is False:
+        self._log.info("Starting mapLines")
+
+        if self.mapLinesStarted is False or force is True:
             self.mapLinesStarted = True
             for pipeClientProcesses in list(self.pipeClientProcesses.values()):
                 for client in list(pipeClientProcesses.values()):
@@ -687,109 +698,97 @@ class ProcessRunner:
         Returns:
             list. List of strings that are the output lines from selected pipes
         """
-        outputList = []
+        manager = multiprocessing.Manager()
+        output_list = manager.list()  # Final list of lines to be returned
+        complete_events_dict = dict()  # Dict of the "complete" Events from
+                                       # mapLines
 
-        # if not self.run.get("started"):
-        #     raise ProcessNotStarted("Target command hasn't started yet; please"
-        #                             " call ProcessRunner.start() to start the "
-        #                             "target process")
+        # Count existing clients
+        current_client_count = 0
+        for pipe_name, client_dict in list(self.pipeClientProcesses.items()):
+            # Skip inputs
+            if pipe_name == "stdin":
+                continue
+
+            if len(client_dict) > 0:
+                current_client_count += len(client_dict)
 
         # Warn if we've started with other clients attached; we can't reliably
         # get output from the process if output has started flowing to other
         # consumers.
-        if self.run.get("started") and len(self.pipeClientProcesses) > 0:
+        if self.run.get("started") and current_client_count > 0:
             self._log.warning("Other consumers are already attached and the"
                               " process has started. Some data may have"
                               " already been processed and will not be"
                               " available from this method.")
 
-        elif not self.run.get("started"):
-            self.start()
+        # Function for mapLines to write into the shared list
+        def to_output(line):
+            output_list.append(line.rstrip('\n'))
 
-        # Register for client IDs from all appropriate pipe managers
-        clientIds = dict()
+        # Register for a map of each appropriate pipe manager
         if procPipeName is None:
+            # Go through the list of available pipes
             for pipeName in list(self.pipeClients):
+
+                # Skip input pipes
                 if pipeName == "stdin":
                     continue
 
-                clientIds[pipeName], q = self.registerForClientQueue(pipeName)
-                self._log.debug("Registered {} for client {}"
-                                .format(pipeName, clientIds[pipeName]))
+                # Register for the mapping
+                complete_events_dict[pipeName] = self.mapLines(to_output,
+                                                               pipeName)
+                self._log.info("Registered {}".format(pipeName))
 
         else:
-            clientIds[procPipeName], q = \
-                self.registerForClientQueue(procPipeName)
+            # Register for the mapping if we were given a specific one
+            complete_events_dict[procPipeName] = self.mapLines(to_output,
+                                                               procPipeName)
+            self._log.info("Registered {}".format(procPipeName))
 
-            self._log.debug("Registered {} for client {}"
-                            .format(procPipeName, clientIds[procPipeName]))
+        # Start the process if it hasn't been already
+        if not self.run.get("started"):
+            self.start()
+
+        # Make sure this gets called again to trigger the maps we just added
+        else:
+            self.startMapLines(force=True)
 
         # Internal function to check whether we are done reading
-        def checkComplete(self, clientIds):
+        def checkComplete(log, events_dict):
             complete = True
 
-            # Incorporate status of target process
-            # Target process alive:
-            #   complete = True & !(True) == True & False == False
-            # Target process stopped:
-            #   complete = True & !(False) == True & True == True
-            complete = complete and not self.isAlive()  # True & !
+            for pipe_name, complete_event in list(events_dict.items()):
+                # Check if the mapLines have completed
+                log.debug("Checking if {} client has finished"
+                          .format(pipe_name))
+                complete = complete and complete_event.is_set()
 
-            for pipeName, clientId in list(clientIds.items()):
-                # Check if the pipe enqueue process is still running
-                # This fixes failures with very large content from
-                # test_processrunner_onem_check_content (and the emoji one)
-                complete = complete and \
-                    not self.run.is_queue_alive(pipeName)
-
-                # Check status of queues
-                # Target alive, queues w content:
-                #   complete = False & False == False
-                # Target alive, queues empty:
-                #   complete = False & True == False
-                # Target stopped, queues w content:
-                #   complete = True & False == False
-                # Target stopped, queues empty:
-                #   complete = True & True == True
-                self._log.debug("Checking if {} client {} is empty"
-                                .format(pipeName, clientId))
-                complete = complete and self.isQueueEmpty(pipeName, clientId)
-
-            # Try to use the drained feature
-            for pipeName in clientIds.keys():
-                self._log.debug("Checking if {} is drained".format(pipeName))
-                complete = complete and self.run.is_queue_drained(pipeName)
-
-            self._log.info("Process complete status: {}".format(complete))
+            log.debug("Process complete status: {}".format(complete))
 
             return complete
 
-        # Main loop to pull everything off our queues
-        timer = Timer(interval_ms=5000)
+        # Main loop to check completeness
+        interval_delay = settings.config["NOTIFICATION_DELAY"] * 1000
+        timer = Timer(interval_ms=interval_delay)
         while True:
-            if timer.interval():
-                print("Waiting for {} seconds".format(timer.lap()/1000))
-
-            for pipeName, clientId in list(clientIds.items()):
-                while True:
-                    try:
-                        self._log.debug("Trying to read line from {} client {}"
-                                        .format(pipeName, clientId))
-
-                        line = self.getLineFromPipe(pipeName, clientId) \
-                            .rstrip('\n')
-
-                        self._log.debug("Got line of length {} from {} client"
-                                        " {}".format(len(line),
-                                                     pipeName,
-                                                     clientId))
-                        outputList.append(line)
-                    except Empty:
-                        break
-
-            if checkComplete(self, clientIds):
+            # If everyone is complete, finish!
+            if checkComplete(self._log, complete_events_dict):
                 break
-            else:
-                time.sleep(0.001)
 
-        return outputList
+            # If not, wait a moment then check again
+            else:
+                # Let the user know what's happening if we're delayed
+                if timer.interval():
+                    self._log.info("Not complete for {:.1f} seconds"
+                                   .format(timer.lap() / 1000))
+
+                time.sleep(0.005)
+
+        # Convert the ListProxy to a "real" list before returning it
+        output_list_final = list(output_list)
+
+        # Stop the Manager
+        manager.shutdown()
+
+        return output_list_final

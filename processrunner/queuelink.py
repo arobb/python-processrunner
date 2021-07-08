@@ -208,6 +208,7 @@ class QueueLink(object):
 
             # Make sure we don't accidentally create a loop, or add multiple
             # times
+            # TODO: Try to validate and test this more thoroughly
             if queue_proxy in queue_dict.values():
                 raise ValueError("Cannot add this queue again")
 
@@ -309,7 +310,7 @@ class QueueLink(object):
 
     def stopPublisher(self, source_id):
         """Stop a current publisher process"""
-        self._log.debug("Stopping client {}".format(source_id))
+        self._log.debug("Stopping publisher {}".format(source_id))
         stop_event = self.publisherStops[text(source_id)]
         stop_event.set()
 

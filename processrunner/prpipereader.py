@@ -90,8 +90,8 @@ class _PrPipeReader(_PrPipe):
 
         Args:
             clientId (string): ID of the client
-            timeout (int): <0 for get_nowait behavior, otherwise use
-                           get(timeout=timeout)
+            timeout (float): <0 for get_nowait behavior, otherwise use
+                           get(timeout=timeout); in seconds
 
         Returns:
             <element from Queue>
