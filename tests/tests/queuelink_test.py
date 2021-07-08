@@ -4,6 +4,7 @@ import time
 import unittest
 
 from multiprocessing import Manager
+from parameterized import parameterized
 
 try:  # Python 2.7
     from Queue import Empty
@@ -53,6 +54,49 @@ class ProcessRunnerQueueLinkTestCase(unittest.TestCase):
         self.assertEqual(text_in,
                          text_out,
                          "Text isn't the same across the link")
+
+    @parameterized.expand([
+        ["source"],
+        ["destination"]
+    ])
+    def test_processrunner_queuelink_prevent_multiple_entries(self,
+                                                              direction):
+        """Don't allow a user to add the same proxy to a direction multiple
+        times."""
+        q = self.manager.JoinableQueue()
+        queue_link = QueueLink(name="test_link")
+
+        # Add the queue once
+        queue_link.registerQueue(queue_proxy=q,
+                                 direction=direction)
+
+        # Should raise an error the next time
+        self.assertRaises(ValueError,
+                          queue_link.registerQueue,
+                          queue_proxy=q,
+                          direction=direction)
+
+    @parameterized.expand([
+        ["source", "destination"],
+        ["destination", "source"]
+    ])
+    def test_processrunner_queuelink_prevent_cyclic_graph(self,
+                                                          start_direction,
+                                                          end_direction):
+        """Don't allow a user to add the same proxy to a direction multiple
+        times."""
+        q = self.manager.JoinableQueue()
+        queue_link = QueueLink(name="test_link")
+
+        # Add the queue once
+        queue_link.registerQueue(queue_proxy=q,
+                                 direction=start_direction)
+
+        # Should raise an error the next time
+        self.assertRaises(ValueError,
+                          queue_link.registerQueue,
+                          queue_proxy=q,
+                          direction=end_direction)
 
 
 if __name__ == "__main__":

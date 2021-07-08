@@ -136,14 +136,13 @@ class QueueLink(object):
                           .format(source_id))
                 line = source_queue.get(timeout=0.05)
 
-                # TODO: Remove this line
-                # log.info("Line in publisher: {}".format(line.value))
-
+                # Distribute the line to all downstream queues
                 for dest_id, dest_queue in dest_queues_dict.items():
                     log.info("Writing line from source {} to dest {}"
                              .format(source_id, dest_id))
                     dest_queue.put(line)
 
+                # Mark that we've finished processing the item from the queue
                 source_queue.task_done()
 
                 # Check for stop here
@@ -204,15 +203,17 @@ class QueueLink(object):
 
         with self.queuesLock:
             # Get the queue list and opposite queue list
-            queue_dict = getattr(self, "clientQueues{}".format(direction_caps))
+            queue_dict = getattr(self, "clientQueues{}"
+                                 .format(direction_caps))
+            op_queue_dict = getattr(self, "clientQueues{}"
+                                    .format(op_direction_caps))
 
             # Make sure we don't accidentally create a loop, or add multiple
             # times
-            # TODO: Try to validate and test this more thoroughly
             if queue_proxy in queue_dict.values():
                 raise ValueError("Cannot add this queue again")
 
-            if queue_proxy in queue_dict.values():
+            if queue_proxy in op_queue_dict.values():
                 raise ValueError("This queue is in the opposite list. Cannot"
                                  " add to the {} list because it would cause"
                                  " a circular reference.".format(direction))
