@@ -81,6 +81,19 @@ class HandleNotSet(Exception):
         return repr(self.value)
 
 
+class Timeout(Exception):
+    """Raise if ProcessRunner.wait times out
+    """
+    def __init__(self, value=""):
+        """Arguments must be option to prevent triggering
+        https://bugs.python.org/issue15440 when raised in _Command"""
+        self.errno = 7
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
 class ExceptionHandler(Exception):
     """Exception management
 

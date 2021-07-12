@@ -34,6 +34,7 @@ from .exceptionhandler import ProcessAlreadyStarted
 from .exceptionhandler import ProcessNotStarted
 from .exceptionhandler import ExceptionHandler
 from .exceptionhandler import HandleNotSet
+from .exceptionhandler import Timeout
 
 # Global values when using ProcessRunner
 PROCESSRUNNER_PROCESSES = []  # Holding list for instances of ProcessRunner
@@ -80,6 +81,10 @@ class ProcessRunner:
                 process or wait for the user to call start()
             stdin (pipe): File-like object to read from
         """
+        # Unique ID
+        self.id = \
+            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+
         self.log_name = log_name
         self._initializeLogging()
         log = self._log
@@ -130,8 +135,8 @@ class ProcessRunner:
                                 stderr=dict())
         self.pipeClientProcesses = dict(stdout=dict(),
                                         stderr=dict())
-        if self.stdin is not None:
-            self.enableStdin()
+        # if self.stdin is not None:
+        #     self.enableStdin()  # Comment out here, will happen in start()
 
         # Storage for file handles opened on behalf of users who want output
         # directed to files
@@ -148,9 +153,12 @@ class ProcessRunner:
         self.run = self.runManager._Command(self.command,
                                             cwd=self.cwd,
                                             autostart=self.autostart,
-                                            stdin=self.stdin,
                                             std_queues=self.stdQueues,
                                             log_name=self.log_name)
+
+        # If stdin requested, enable it
+        if self.stdin is not None:
+            self.enableStdin()
 
         # Register this ProcessRunner
         PROCESSRUNNER_PROCESSES.append(self)
@@ -161,6 +169,8 @@ class ProcessRunner:
         # If we are connected to another instance, store a reference to
         # the next downstream process
         self.downstreamProcessRunner = None
+        self.linkedWatcherProcess = None
+        # self.stdin_stop_event = Event()  # Downstream stdin needs to watch
 
         # Event to help mapLines stop gracefully
         self.stop_event = Event()
@@ -185,6 +195,9 @@ class ProcessRunner:
             raise TypeError("Cannot OR {} with {}".format(type(other),
                                                           type(self)))
 
+        # Queues to watch dict("stdout":
+        watch_queues = dict()
+
         if other.stdin is None:
             try:
                 other.enableStdin()
@@ -193,17 +206,75 @@ class ProcessRunner:
                                             " after they have started")
 
         stdin_clientId, stdin_q = other.registerForClientQueue("stdin")
-        self._linkClientQueues("stdout", stdin_q)
+        clientId = self._linkClientQueues("stdout", stdin_q)
+        watch_queues["stdout"] = clientId
 
         self.downstreamProcessRunner = other
+
+        # Start a watcher to close stdin when the local outputs drain
+        linked_process_name = "LinkedWatcher-{}".format(self.id)
+        proc = Process(target=self._linked_watcher,
+                       name=linked_process_name,
+                       kwargs={"run": self.run,
+                               "downstream_pr": self.downstreamProcessRunner,
+                               "out_queues": watch_queues})
+        self.linkedWatcherProcess = proc
+
+    @staticmethod
+    def _linked_watcher(run, downstream_pr, out_queues):
+        """Misnomer to better align with the correct section of the codebase.
+        Watch the output process output(s). When they close and queues
+        drain, close stdin on the downstream instance.
+
+        :argument _Command run: The "run" variable
+        :argument ProcessRunner downstream_pr: The linked PR instance
+        :argument dict out_queues: dict("stdout": clientId, "stderr": clientId)
+        """
+        logger_name = "{}".format(__name__)
+        log = logging.getLogger(logger_name)
+        log.addHandler(logging.NullHandler())
+
+        log.info("Starting linked watcher process")
+
+        # Iterate through the list of provided "output" queues
+        t = Timer(interval_ms=settings.config["NOTIFICATION_DELAY"] * 1000)
+        while True:
+            # Log whether we are still running
+            if t.interval():
+                log.debug("Linked watcher process still running")
+
+            # Check if the main process is still running
+            if run.isAlive():
+                continue
+
+            complete = True
+            for procPipeName, clientId in list(out_queues.items()):
+
+                # Check if the output queue still has data
+                complete = complete and run.is_queue_drained(procPipeName,
+                                                             clientId)
+
+            # If we are complete, then close the linked stdin, then exit
+            if complete:
+                log.info("Linked watcher closing linked stdin")
+                downstream_pr.closeStdin()
+
+                log.info("Linked watcher process exiting")
+                return
 
     def _initializeLogging(self):
         if hasattr(self, '_log'):
             if self._log is not None:
                 return
 
+        # Logger name
+        log_name = "{}-{}".format(__name__, self.id)
+
+        if self.log_name is not None:
+            log_name = "{}.{}".format(log_name, self.log_name)
+
         # Logging
-        self._log = logging.getLogger(__name__)
+        self._log = logging.getLogger(log_name)
         self.addLoggingHandler(logging.NullHandler())
 
     def addLoggingHandler(self, handler):
@@ -256,13 +327,14 @@ class ProcessRunner:
             raise ProcessAlreadyStarted("Cannot enable stdin after the process"
                                         "has been started")
 
-        if self.stdin is None:
-            self.stdin = True
-
         # Queue for combined storage off the clients
-        stdin_q = self.queueManager\
-            .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
-        self.stdQueues['stdin'] = stdin_q
+        if "stdin" in self.stdQueues:
+            raise KeyError("stdin already set")
+
+        else:
+            stdin_q = self.queueManager\
+                .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
+            self.stdQueues['stdin'] = stdin_q
 
         # Dicts to hold any clients pushing to this process
         self.pipeClients['stdin'] = dict()
@@ -270,6 +342,26 @@ class ProcessRunner:
 
         # Activate stdin
         self.run.enableStdin(queue=stdin_q)
+
+        # Mark stdin "flag" enabled
+        if self.stdin is None:
+            self.stdin = True
+
+    def closeStdin(self):
+        """Proxy to call _Command.closeStdin"""
+        if self.stdin is None:
+            return
+
+        try:
+            self.run.closeStdin()
+
+        except HandleNotSet:
+            self._log.debug("Trying to close stdin, but the handle was never "
+                           "set")
+
+        except IOError:
+            self._log.debug("Trying to close stdin, but the process has"
+                            " already stopped")
 
     def start(self):
         """Pass through to _Command.start
@@ -279,10 +371,18 @@ class ProcessRunner:
         # Make sure all mapLines watchers are started
         self.startMapLines()
 
-        # Start the flusher process
-        # self.autoFlushProcess.start()
+        # Enable stdin
+        if self.stdin is not None:
+            try:
+                self.enableStdin()
+            except KeyError:
+                self._log.debug("start method trying to enable stdin, but"
+                                " it is already enabled")
 
-        return self.run.start()
+        # Start the target process
+        ret_val = self.run.start()
+
+        return ret_val
 
     def isQueueEmpty(self, procPipeName, clientId):
         """Check whether the pipe manager queues report empty
@@ -362,30 +462,24 @@ class ProcessRunner:
                         self.pipeClientProcesses[procPipeName][text(clientId)]\
                             .exitcode
 
-    def closeStdin(self):
-        """Proxy to call _Command.closeStdin"""
-        try:
-            self.run.closeStdin()
-
-        except HandleNotSet:
-            self._log.debug("Trying to close stdin, but the handle was never "
-                           "set")
-
-        except IOError:
-            self._log.debug("Trying to close stdin, but the process has"
-                            " already stopped")
-
-    def wait(self):
+    def wait(self, timeout=None):
         """Block until the Popen process exits
 
         Does some extra checking to make sure the pipe managers have finished
         reading
 
+        :argument float timeout: Max time in seconds before raising Timeout
+
         TODO: Check if this will deadlock if clients aren't finished reading
         (may only be internal maplines)
         """
         self.startMapLines()
-        self.run.wait()
+
+        try:
+            self.run.wait(timeout=timeout)
+        except Timeout as e:
+            raise e
+
         # self._join()
 
         return self
@@ -479,24 +573,39 @@ class ProcessRunner:
         self.stop_event.set()
 
         # self.terminate()
-        self.run.stop()
+        try:
+            self._log.debug("Calling self.run.stop()")
+            self.run.stop()
+        except IOError:
+            self._log.debug("Running shutdown on self.run.stop() but run is"
+                            " already gone.")
+        except EOFError:
+            self._log.debug("Running shutdown on self.run.stop() but run is"
+                            " already gone.")
 
         try:
-            self.closeStdin()
+            if self.stdin is not None:
+                self.closeStdin()
         except HandleNotSet:
             pass  # If the handle wasn't set, this was a noop
 
         self.queueManager.shutdown()
         self.runManager.shutdown()
 
-        # Close any output handles
+        # Close any output handles (see write method)
         for file_path, handle in list(self.output_file_handles.items()):
             self._log.debug("Closing handle for output file {}"
                             .format(file_path))
             handle.flush()
             handle.close()
 
-        PROCESSRUNNER_PROCESSES.remove(self)
+        try:
+            # Throws a ValueError if the process isn't in the list (why?)
+            PROCESSRUNNER_PROCESSES.remove(self)
+        except ValueError as e:
+            self._log.debug("Exception during shutdown, removing from list: "
+                            .format(e))
+            ExceptionHandler(e)
 
     def registerForClientQueue(self, procPipeName):
         """Register to get a client queue on a pipe manager
@@ -525,9 +634,14 @@ class ProcessRunner:
 
         Args:
             queue (Queue proxy)
+
+        Returns:
+            int
         """
         clientId = self.run.registerClientQueue(procPipeName, queue)
         self.pipeClients[procPipeName][clientId] = queue
+
+        return clientId
 
     def unRegisterClientQueue(self, procPipeName, clientId):
         """Unregister a client queue from a pipe manager
@@ -702,12 +816,16 @@ class ProcessRunner:
                 for client in list(pipeClientProcesses.values()):
                     client.start()
 
-    def collectLines(self, procPipeName=None):
+    def collectLines(self, procPipeName=None, timeout=None):
         """Retrieve output lines as a list for one or all pipes from the
         process. Will start the process if it is not already running!
 
         Kwargs:
             procPipeName (string): One of "stdout" or "stderr"
+            timeout (float): Max length to stay in collectLines, raises Timeout
+
+        Raises:
+            ProcessRunner.Timeout
 
         Returns:
             list. List of strings that are the output lines from selected pipes
@@ -785,7 +903,20 @@ class ProcessRunner:
         # Main loop to check completeness
         interval_delay = settings.config["NOTIFICATION_DELAY"] * 1000
         timer = Timer(interval_ms=interval_delay)
+
+        # Start timeout timer
+        if timeout is not None:
+            timeout_obj = Timer(timeout * 1000)
+
         while True:
+            # Check for a timeout
+            if timeout is not None:
+                if timeout_obj.interval():
+                    message = "collectLines() has timed out " \
+                              "at {} seconds".format(timeout)
+                    self._log.debug(message)
+                    raise Timeout(message)
+
             # If everyone is complete, finish!
             if checkComplete(self._log, complete_events_dict):
                 break

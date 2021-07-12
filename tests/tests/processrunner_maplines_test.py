@@ -89,7 +89,7 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
                              list(),
                              "errors occured:\n{}".format("\n".join(errors)))
 
-    def test_processrunner_return_code_with_maplines(self):
+    def test_processrunner_return_code_with_maplines_200_rounds(self):
         command = [self.sampleCommandPath, "--lines", "5", "--block", "1", "--sleep", "0", "--return-code", "1"]
 
         def run():
@@ -120,7 +120,7 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
                 # time.sleep(0.1)  # 0.1 seems to reliably work, 0.01 reliably breaks
 
                 # Try to see if an alternative to wait() will cause the same issue
-                proc.wait()
+                proc.wait(timeout=1)
                 # proc.startMapLines()
                 # while proc.poll() is None:
                 #     time.sleep(0.01)

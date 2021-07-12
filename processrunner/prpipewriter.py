@@ -77,11 +77,14 @@ class _PrPipeWriter(_PrPipe):
                     # log.debug("Line for {}: '{}'".format(pipe_name, line))
 
                     # Extract the content if the line is in a ContentWrapper
+                    # Make sure there is a trailing newline
                     log.info("Writing line to {}".format(pipe_name))
                     if type(line) is ContentWrapper:
-                        pipe_handle.write(line.value)
+                        line_str = line.value.rstrip('\n')
+                        pipe_handle.write("{}\n".format(line_str))
                     else:
-                        pipe_handle.write(line)
+                        line.rstrip('\n')
+                        pipe_handle.write("{}\n".format(line))
 
                     # Flush the pipe to make sure it gets to the process
                     pipe_handle.flush()
@@ -119,24 +122,3 @@ class _PrPipeWriter(_PrPipe):
             q.put(line)
         else:
             q.put(ContentWrapper(line))
-
-    def close(self):
-        """Close the inbound pipe"""
-        if self.pipeHandle is None:
-            raise HandleNotSet("_PrPipeWriter output file handle hasn't been "
-                               "set, but .close was called")
-
-        # Stop the writer process
-        self.stop_event.set()
-
-        # Wait for the writer process to stop
-        while True:
-            self.process.join(timeout=5)
-            if self.process.exitcode is None:
-                self._log.info("Waiting for {} writer process to stop"
-                               .format(self.name))
-            else:
-                break
-
-        return self.pipeHandle.close()
-

@@ -2,15 +2,44 @@ Change Log
 ==========
 Documented changes to the project.
 
-Version 2.4.0+
+Version 2.5.0+
 --------------
+- Mimic the IO read_line generator
 - Internal ContentWrapper class manage value changes across ContentWrapper.THRESHOLD
+-- If the values grow or shink, ContentWrapper should adapt its management
 - Internal ContentWrapper class add created and updated timestamps to enable sorting
 - Ability to sort combined outputs (stdout+stderr) by created timestamps
-- Simple DAG creation across ProcessRunner instances
-- Add discrete "start" functionality to ProcessRunner to manage when the external process begins
 - Create diagram of internal ProcessRunner execution model
 - Create a performance baseline compared to shell pipe actions
+- DAG feature extension
+-- Better track when stdout/stderr are closed to then close stdin on the receiving instance
+
+Version 2.5.0
+-------------
+This is a substantial refactor of many parts of the codebase. There should be
+only minor API changes.
+
+New major features:
+- Simple DAG creation across ProcessRunner instances
+- New write() method to easily redirect content into files
+
+New minor features:
+- Add discrete "start" functionality to ProcessRunner to manage when the external process begins
+- Add timeout (in seconds) argument to wait and collectLines methods
+- New Timeout exception
+
+Internal changes:
+- collectLines now leverages mapLines internally to build the output list in a shared queue to better interleave content from different pipes
+- Closing of stdin is now handled within _Commmand, not _PrPipeWriter
+- New QueueLink class to manage movement of records between queues
+- Refactored substantial functionality between _PrPipe and sub-classes
+- New methods in command.py
+-- send_signal
+-- is_queue_alive
+-- is_queue_drained (based on similar changes to _PrPipe)
+- Leverage Events objects to stop child processes
+
+Dependencies now include `funcsigs`.
 
 Version 2.4.0
 -------------

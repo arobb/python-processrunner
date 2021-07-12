@@ -102,7 +102,7 @@ class _PrPipe(object):
                 return
 
         # Make a helpful log name
-        log_name = self.subclass_name
+        log_name = "{}-{}".format(self.subclass_name, self.id)
 
         if self.log_name is not None:
             log_name = "{}.{}".format(log_name, self.log_name)

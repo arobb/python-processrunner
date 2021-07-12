@@ -68,6 +68,9 @@ class _PrPipeReader(_PrPipe):
             log.warning("Pipe handle is already closed")
 
         else:
+            # Flush out any potentially waiting content
+            pipe_handle.flush()
+
             for line in iter(pipe_handle.readline, ''):
                 log.info("Read line, trying to get a lock")
                 with queue_lock:
