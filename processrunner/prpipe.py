@@ -1,54 +1,91 @@
 # -*- coding: utf-8 -*-
+"""Parent class for _PrPipeReader and _PrPipeWriter"""
 from __future__ import unicode_literals
 from builtins import str as text
 from builtins import dict
 
 import logging
 import random
-import time
 
-from multiprocessing import Process, Lock, JoinableQueue
+from multiprocessing import Event, Lock, Process
 
 try:  # Python 2.7
     from Queue import Empty
 except ImportError:  # Python 3.x
     from queue import Empty
 
-from . import settings
-from .contentwrapper import ContentWrapper
+from .queuelink import QueueLink
+from .exceptionhandler import HandleAlreadySet
 
-
-# Private class only intended to be used by ProcessRunner
-# Suffers from https://bryceboe.com/2011/01/28/
-# the-python-multiprocessing-queue-and-large-objects/ with large objects
 class _PrPipe(object):
-    """Custom pipe manager to capture the output of processes and store them in
-       dedicated thread-safe queues.
+    def __init__(self,
+                 queue,
+                 subclass_name,
+                 queue_direction,
+                 name=None,
+                 pipe_handle=None,
+                 log_name=None):
+        """PrPipe abstract implementation
 
-       Clients register their own queues.
-    """
-
-    def __init__(self, pipeHandle):
+        :argument string queue_direction: Indicate direction relative to pipe;
+            e.g. for PrPipeReader from stdout, the flow is (PIPE => QUEUE) =>
+             CLIENT QUEUES (from pipe/queue into client queues), and therefore
+             queue_direction would be "source".
         """
-        Args:
-            pipeHandle (pipe): Pipe to monitor for records
-        """
-        self._initializeLogging()
 
+        # Unique ID for this PrPipe
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
 
-        self.queue = JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
-        self.inboundQueueLock = Lock()
+        # Name for this instance, typically stdin/stdout/stderr
+        self.name = name
 
-        self.process = Process(target=self.enqueue_output,
-                               kwargs={"out": pipeHandle, "queue": self.queue})
-        self.process.daemon = True
-        self.process.start()
+        # Name of the subclass (PrPipeReader, PrPipeWriter)
+        self.subclass_name = subclass_name
 
-        self.clientQueuesLock = Lock()
-        self.clientQueues = dict()
+        # Additional naming for differentiating multiple instances
+        self.log_name = log_name
+
+        # Initialize the logger
+        self._initializeLogging()
+
+        # Which "direction" client queues will use in the queue_link
+        self.queue_direction = queue_direction
+        self.client_direction = "source" if queue_direction == "destination" \
+            else "destination"
+
+        # Whether we have ever been started
+        self.started = Event()
+
+        # Whether we have been asked to stop
+        self.stopped = Event()
+
+        # Whether the queue adapter process should stop
+        self.stop_event = Event()
+
+        # The queue proxy to be used as the main input or output buffer.
+        # Attaching this to the queue link is the responsibility of subclasses.
+        self.queue = queue
+
+        # Mechanism to connect the baseline queue and client queues
+        self.queue_link = QueueLink(self.name,
+                                    log_name=self.log_name)
+
+        # Store the queue in the correct orientation in the queue link
+        self.queue_link.registerQueue(queue_proxy=self.queue,
+                                      direction=self.queue_direction)
+
+        # Lock to notify readers/writers that a read/write is in progress
+        self.queue_lock = Lock()
+
+        # Keep track of the last client ID we used. Monotonically increasing
+        # across all queues related to this PrPipe.
         self.lastClientId = 0
+
+        self.process = None
+        self.pipeHandle = None
+        if pipe_handle is not None:
+            self.setPipeHandle(pipe_handle)
 
     # Class contains Locks and Queues which cannot be pickled
     def __getstate__(self):
@@ -64,66 +101,66 @@ class _PrPipe(object):
             if self._log is not None:
                 return
 
+        # Make a helpful log name
+        log_name = "{}-{}".format(self.subclass_name, self.id)
+
+        if self.log_name is not None:
+            log_name = "{}.{}".format(log_name, self.log_name)
+
+        if self.name is None:
+            log_name = "{}.{}".format(log_name, self.name)
+
         # Logging
-        self._log = logging.getLogger(__name__)
+        self._log = logging.getLogger(log_name)
         self.addLoggingHandler(logging.NullHandler())
 
     def addLoggingHandler(self, handler):
         self._log.addHandler(handler)
 
-    def enqueue_output(self, out, queue):
-        """Copy lines from a given pipe handle into a local threading.Queue
-
-        Runs in a separate process, started by __init__. Closes pipe when done
-        reading.
+    def setPipeHandle(self, pipeHandle):
+        """Set the pipe handle to use
 
         Args:
-            out (pipe): Pipe to read from
-            queue (Queue): Queue to write to
+            pipeHandle (pipe): An open pipe (subclasses of file, IO.IOBase)
+
+        Raises:
+            HandleAlreadySet
         """
-        with self.inboundQueueLock:
-            for line in iter(out.readline, ''):
-                self._log.debug("Enqueing line of length {}".format(len(line)))
-                lineContent = ContentWrapper(line)
-                queue.put(lineContent)
+        if self.process is not None:
+            raise HandleAlreadySet
 
-                queueStatus = queue.empty()
-                self._log.debug("Queue reporting empty as '{}' after adding "
-                                "line of length {}".format(queueStatus,
-                                                           len(lineContent)))
+        # Store the pipehandle
+        self.pipeHandle = pipeHandle
 
-                # Wait until the queue reports the added content
-                while queue.empty():
-                    time.sleep(0.001)
+        # Process name
+        process_name = "{}-{}".format(self.subclass_name, self.name)
 
-                # If the queue originally reported that it was empty, report
-                # that it's now showing the new content
-                if queueStatus:
-                    self._log.debug("Queue now reporting the added content")
+        if self.log_name is not None:
+            process_name = "{}-{}".format(process_name, self.log_name)
 
-        self._log.debug("Closing pipe handle")
-        out.close()
+        self._log.debug("Setting {} adapter process for {} pipe handle"
+                        .format(self.subclass_name, self.name))
+        self.process = Process(target=self.queue_pipe_adapter,
+                               name=process_name,
+                               kwargs={"pipe_name": self.name,
+                                       "pipe_handle": pipeHandle,
+                                       "queue": self.queue,
+                                       "queue_lock": self.queue_lock,
+                                       "stop_event": self.stop_event})
+        self.process.daemon = True
+        self.process.start()
+        self.started.set()
+        self._log.debug("Kicked off {} adapter process for {} pipe handle"
+                        .format(self.subclass_name, self.name))
 
-    def publish(self):
-        """Push messages from the main queue to all client queues
-
-        Must be triggered by an external mechanism
-        Typically triggered by getLine or wait
-
-        """
-        with self.inboundQueueLock:
-            try:
-                while not self.queue.empty():
-
-                    with self.clientQueuesLock:
-                        line = self.queue.get_nowait()
-                        for q in list(self.clientQueues.values()):
-                            q.put(line)
-
-                    self.queue.task_done()
-
-            except Empty:
-                pass
+    @staticmethod
+    def queue_pipe_adapter(pipe_name,
+                           pipe_handle,
+                           queue,
+                           queue_lock,
+                           stop_event):
+        """Override me in a subclass to do something useful"""
+        pass
 
     def getQueue(self, clientId):
         """Retrieve a client's Queue proxy object
@@ -134,7 +171,28 @@ class _PrPipe(object):
         Returns:
             QueueProxy
         """
-        return self.clientQueues[text(clientId)]
+        return self.queue_link.getQueue(clientId)
+
+    def stop(self):
+        """Stop the adapter and queue link.
+
+        Does not force a drain of the queues.
+        """
+        # Mark that we have been asked to stop
+        self.stopped.set()
+
+        # Stop the adapter
+        self.stop_event.set()
+
+        while True:
+            self.process.join(timeout=5)
+            if self.process.exitcode is None:
+                self._log.info("Waiting for adapter to stop")
+            else:
+                break
+
+        # Stop the queue link
+        self.queue_link.stop()
 
     def isEmpty(self, clientId=None):
         """Checks whether the primary Queue or any clients' Queues are empty
@@ -149,19 +207,20 @@ class _PrPipe(object):
         Returns:
             bool
         """
-        with self.inboundQueueLock:
+        with self.queue_lock:
             if clientId is not None:
                 empty = self.queue.empty() \
-                        and self.getQueue(clientId).empty()
+                        and self.queue_link.isEmpty(clientId)
+
+                self._log.debug("Reporting pipe empty for client {}: {}"
+                                .format(clientId, empty))
 
             else:
-                empty = self.queue.empty()
+                empty = self.queue.empty() \
+                        and self.queue_link.isEmpty()
 
-                with self.clientQueuesLock:
-                    for q in list(self.clientQueues.values()):
-                        empty = empty and q.empty()
+                self._log.debug("Reporting pipe empty: {}".format(empty))
 
-            self._log.debug("Reporting queue empty: {}".format(empty))
             return empty
 
     def is_alive(self):
@@ -173,82 +232,39 @@ class _PrPipe(object):
         """
         return self.process.is_alive()
 
-    def getLine(self, clientId):
-        """Retrieve a line from a given client's Queue
+    def is_drained(self, clientId=None):
+        """Check alive and empty
 
-        Args:
-            clientId (string): ID of the client
+        Attempts clean semantic response to "is there, or will there be, data
+        to read?"
 
-        Returns:
-            <element from Queue>
+        :returns bool"""
+        drained = True
 
-        Raises:
-            Empty
-        """
-        # Pull any newer lines
-        self.publish()
+        # If we aren't started, we have to stop here. The process isn't ready
+        # to call is_alive()
+        if not self.started.is_set():
+            return False
 
-        # Throws Empty
-        q = self.getQueue(clientId)
-        line = q.get_nowait()
-        q.task_done()
+        # Alive (True) means we are not drained
+        drained = drained and not self.is_alive()
 
-        self._log.debug("Returning line")
+        # Checks a similar function on the queue_link
+        drained = drained and self.queue_link.is_drained(queue_id=clientId)
 
-        return line.value
+        # Not checking self.isEmpty because that is effectively done by
+        # running self.queue_link.is_drained()
+
+        return drained
 
     def registerClientQueue(self, queueProxy):
-        """Attach an additional Queue proxy to this _PrPipe
-
-        All elements published() from now on will also be added to this Queue
-        Returns the clientId for the new client, which must be used in all
-        future interaction with this _PrPipe
-
-        Args:
-            queueProxy (QueueProxy): Proxy object to a Queue we should populate
-
-        Returns:
-            string. The client's ID for access to this queue
-
-        """
-        # Make sure we don't re-use a clientId
-        clientId = self.lastClientId + 1
-        self.lastClientId = clientId
-
-        with self.clientQueuesLock:
-            self.clientQueues[text(clientId)] = queueProxy
-
-        return text(clientId)
+        return self.queue_link.registerQueue(queue_proxy=queueProxy,
+                                             direction=self.client_direction)
 
     def unRegisterClientQueue(self, clientId):
-        """Detach a Queue proxy from this _PrPipe
-
-        Returns the clientId that was removed
-
-        Args:
-            clientId (string): ID of the client
-
-        Returns:
-            string. ID of the client queue
-
-        """
-        with self.clientQueuesLock:
-            if text(clientId) in self.clientQueues:
-                self.clientQueues.pop(clientId)
-
-        return text(clientId)
+        return self.queue_link.unRegisterQueue(queue_id=clientId,
+                                               direction=self.client_direction)
 
     def destructiveAudit(self):
-        """Print a line from each client Queue attached to this _PrPipe
-
-        This is a destructive operation, as it *removes* a line from each Queue
-        """
-        with self.clientQueuesLock:
-            for clientId in list(self.clientQueues):
-                try:
-                    self._log.info("clientId {}: {}"
-                                   .format(text(clientId),
-                                           self.getLine(clientId)))
-                except Empty:
-                    self._log.info("clientId {} is empty"
-                                   .format(text(clientId)))
+        return self.queue_link.destructiveAudit(direction=
+                                                self.client_direction)

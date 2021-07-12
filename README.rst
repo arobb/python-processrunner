@@ -96,6 +96,7 @@ mapLines
   *Parameters*
     - **func** REQUIRED ``function`` A function that takes one parameter, the line from the pipe and returns the line with any desired changes.
     - **procPipeName** REQUIRED ``string`` One of "stdout" or "stderr".
+    - **timeout** OPTIONAL ``float`` Seconds to wait before raising a Timeout exception
 
   *Properties*
     - Non-blocking: Returns immediately.
@@ -152,7 +153,7 @@ wait
   Block until the external process exits and pipe managers have finished reading from the external pipes.
 
   *Parameters*
-    - None
+    - **timeout** OPTIONAL ``float`` Seconds to wait before raising a Timeout exception
 
   *Properties*
     - Chainable
@@ -165,6 +166,16 @@ which
 
   *Properties*
     - Static
+
+write
+  Write output from the command directly to files.
+
+  *Parameters*
+    - **file_path** REQUIRED ``string`` Path to the output file
+    - **procPipeName** OPTIONAL ``string`` One of "stdout" or "stderr".
+
+  *Properties*
+    - Chainable
 
 
 Provided convenience functions
@@ -205,6 +216,18 @@ getActiveProcesses
   The getActiveProcesses function returns a list of ``ProcessRunner`` instances that are currently alive.
 
   *Takes no parameters*
+
+
+Chain commands together
+=======================
+Connect the stdout of one command to the stdin of another. Just use the "or"
+function, similar to how this is done in a shell.
+
+This is not all purpose. Commands often do not end when you expect them to,
+and require use of watchers to stop them independently. (collectLines, for
+instance, will hang.)
+
+See the tests directory "processrunner_chaining_test.py" for examples.
 
 
 Custom Exceptions

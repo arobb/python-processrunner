@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+from builtins import str as text
+
+import multiprocessing
 import os
 import sys
 import time
@@ -10,10 +13,11 @@ from tempfile import NamedTemporaryFile
 
 from tests.tests import context
 from tests.tests.spinner import Spinner
+from processrunner.timer import Timer
 from processrunner import ProcessRunner
 from processrunner import runCommand
-from processrunner.exceptionhandler import AlreadyStarted
-from processrunner.exceptionhandler import NotStarted
+from processrunner.exceptionhandler import ProcessAlreadyStarted
+from processrunner.exceptionhandler import ProcessNotStarted
 
 
 '''
@@ -37,29 +41,40 @@ def printQsize(proc):
 
 class ProcessRunnerTestCase(unittest.TestCase):
     def setUp(self):
+        self.sampleCommandDir = os.path.join(os.path.dirname(__file__), "..")
         sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
 
         self.spinner = Spinner()
 
+        self.manager = multiprocessing.Manager()
+
 
 class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
-
     @parameterized.expand([
         [True, False],  # Autostart, no need to manually trigger start
         [False, True]   # Trigger manual start at A
     ])
     def test_processrunner_correct_stdout_count(self, autostart, manualstart):
-        testLen = 10000
+        testLen = 1000
         command = [sys.executable, self.sampleCommandPath, "--lines", "{}".format(testLen), "--block", "1", "--sleep", "0"]
+        t = Timer(interval_ms=5000)
+        print("Before with-as time: {}ms".format(t.lap()))
         with ProcessRunner(command, autostart=autostart) as proc:
+            print("After with-as time: {}ms".format(t.lap()))
+
             # Verify start works when placed before collectLines
             if manualstart:
                 proc.start()
 
             # Store process output
+            print("Before collectLines time: {}ms".format(t.lap()))
+
             output = proc.collectLines()
+            print("Following collectLines time: {}ms".format(t.lap()))
+
             result = proc.wait().poll()
+            print("Following proc.wait().poll() time: {}ms".format(t.lap()))
 
         length = len(output)
 
@@ -73,14 +88,6 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         # Verify the test script exit code was 0
         self.assertEqual(result, 0, 'Test script return code not zero')
 
-    def test_processrunner_collectLines_raise_NotStarted(self):
-        """Ensure NotStarted is raised when using collectLines before
-        start()"""
-        command = ["echo", "bonjour"]
-        with self.assertRaises(NotStarted):
-            with ProcessRunner(command, autostart=False) as proc:
-                output = proc.collectLines()
-
     @parameterized.expand([
         [True, True, False],
         [False, True, True]
@@ -92,7 +99,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         command = ["echo", "bonjour"]
         with ProcessRunner(command, autostart=autostart) as proc:
             # Duplicate proc.starts()
-            with self.assertRaises(AlreadyStarted):
+            with self.assertRaises(ProcessAlreadyStarted):
                 if start_a:
                     proc.start()
                 if start_b:
@@ -116,11 +123,11 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             for i in range(0, testLen):
                 try:
                     proc.start()
-                except AlreadyStarted:
+                except ProcessAlreadyStarted:
                     pass
 
             # Trigger one more that is the test
-            with self.assertRaises(AlreadyStarted):
+            with self.assertRaises(ProcessAlreadyStarted):
                 proc.start()
 
     def test_processrunner_leak_check(self):
@@ -173,6 +180,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
                          "Returned text not the same length: in {}, out {}".format(len(textIn), len(textOut)))
 
     def test_processrunner_check_emoji_content(self):
+        """Verifies compatibility with extended characters"""
         textIn = "😂" * 10
         command = ["echo", textIn]
 
@@ -193,7 +201,8 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             command = ["cat", tempFile.name]
 
             with ProcessRunner(command) as proc:
-                textOut = proc.collectLines()[0]  # < Sometimes fails with index out of range
+                fullText = proc.collectLines()
+                textOut = fullText[0]  # < Sometimes fails with index out of range
 
         self.assertEqual(len(textIn),
                          len(textOut),
@@ -213,4 +222,4 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
 
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromTestCase(ProcessRunnerCoreTestCase)
-    unittest.TextTestRunner(verbosity=2).run(suite)
+    unittest.TextTestRunner(verbosity=3).run(suite)

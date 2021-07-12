@@ -60,7 +60,7 @@ class ContentWrapper(object):
         if attr == "value":
             # Within the threshold size limit
             if len(to_bytes(val)) < ContentWrapper.THRESHOLD:
-                self._log.info("Storing value to memory")
+                self._log.debug("Storing value to memory")
                 object.__setattr__(self, attr, val)
 
             # Larger than what a queue value can hold
@@ -173,4 +173,11 @@ class ContentWrapper(object):
         handle = object.__getattribute__(self, "locationHandle")
         reader = getreader("utf-8")(handle)
         handle.seek(0)
-        return reader.read()
+
+        stopwatch = Timer()
+        content = reader.read()
+        lap = stopwatch.lap()
+        self._log.info("Finished reading value into buffer file in {}"
+                       " seconds".format(lap / 1000))
+
+        return content

@@ -48,7 +48,7 @@ for i in ${runlist[@]}; do
       pytest
     else
       # python -m unittest discover -p "$1"
-      pytest "$DIR/tests/tests/$1"
+      pytest -v "$DIR/tests/tests/$1"
     fi
 
     deactivate
