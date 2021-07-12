@@ -235,6 +235,9 @@ Custom Exceptions
 CommandNotFound
   Exception thrown when the command to execute isn't available.
 
+Timeout
+  Exception thrown when methods with 'timeout' arguments reach max duration.
+
 
 Examples
 ==============
