@@ -5,6 +5,7 @@ Documented changes to the project.
 Version 2.5.0+
 --------------
 - Mimic the IO read_line generator
+- Add ProcessRunner.stdout/stderr/output attributes as iterators
 - Internal ContentWrapper class manage value changes across ContentWrapper.THRESHOLD
 -- If the values grow or shink, ContentWrapper should adapt its management
 - Internal ContentWrapper class add created and updated timestamps to enable sorting

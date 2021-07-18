@@ -5,17 +5,13 @@ from past.builtins import basestring
 from builtins import str as text
 from builtins import dict
 
-import errno
 import logging
 import multiprocessing
 import os
 import random
-import socket
 import sys
 import time
-import traceback
 
-from copy import deepcopy
 from multiprocessing import Process, Event
 from deprecated import deprecated
 
@@ -25,6 +21,7 @@ except ImportError:  # Python 3.x
     from queue import Empty
 
 from . import settings
+from .priterator import PrIterator
 from .timer import Timer
 from .which import which
 from .writeout import writeOut
@@ -80,6 +77,7 @@ class ProcessRunner:
             autostart (bool): Whether to automatically start the target
                 process or wait for the user to call start()
             stdin (pipe): File-like object to read from
+            log_name (string): Additional label to use in log records
         """
         # Unique ID
         self.id = \
@@ -116,6 +114,11 @@ class ProcessRunner:
         self.stdin = stdin
         self.run = None  # Will hold the proxied _Command instance
 
+        # Placeholders for iterable versions
+        self.iterators = dict(output=None,  # Combination of stdout and stderr
+                              stdout=None,
+                              stderr=None)
+
         # Multiprocessing instance used to start process-safe Queues
         self.queueManager = multiprocessing.Manager()
 
@@ -135,8 +138,6 @@ class ProcessRunner:
                                 stderr=dict())
         self.pipeClientProcesses = dict(stdout=dict(),
                                         stderr=dict())
-        # if self.stdin is not None:
-        #     self.enableStdin()  # Comment out here, will happen in start()
 
         # Storage for file handles opened on behalf of users who want output
         # directed to files
@@ -170,7 +171,6 @@ class ProcessRunner:
         # the next downstream process
         self.downstreamProcessRunner = None
         self.linkedWatcherProcess = None
-        # self.stdin_stop_event = Event()  # Downstream stdin needs to watch
 
         # Event to help mapLines stop gracefully
         self.stop_event = Event()
@@ -184,6 +184,37 @@ class ProcessRunner:
         """Support 'with' syntax
         """
         self.shutdown()
+
+    def __getattr__(self, item):
+        # Create iterator for stdout, stderr, and combined ("output")
+        if item not in ['stdout', 'stderr', 'output']:
+            message = "{} object as no attribute '{}'".format(__name__, item)
+            raise AttributeError(message)
+
+        # Get a list proxy for one or both outbound pipes
+        if self.iterators[item] is None:
+            if item == 'output':
+                output, event = self.getExpandingList()
+                client_count = self.getClientCount()
+            else:
+                output, event = self.getExpandingList(item)
+                client_count = self.getClientCount(item)
+
+            # Warn the user about potential loss
+            if self.started() and client_count > 0:
+                pipe_name = "stdout and stderr" if item == "other" else item
+                self._log.warning("Potential for missing lines! Other"
+                                  " consumers are already attached and the"
+                                  " process has started. Some data may have"
+                                  " already been processed and will not be"
+                                  " available from this method."
+                                  .format(pipe_name))
+
+            # Create an iterator over the list proxy and complete event
+            iterator = PrIterator(output, event)
+            self.iterators[item] = iterator
+
+        return self.iterators[item]
 
     def __or__(self, other):
         """Support ProcessRunner chaining
@@ -383,6 +414,12 @@ class ProcessRunner:
         ret_val = self.run.start()
 
         return ret_val
+
+    def started(self):
+        """Whether the command has started
+
+        :returns bool"""
+        return self.run.get("started")
 
     def isQueueEmpty(self, procPipeName, clientId):
         """Check whether the pipe manager queues report empty
@@ -701,6 +738,9 @@ class ProcessRunner:
         used as a blocking mechanism by functions invoking mapLines, by using
         Event.wait().
 
+        Be careful to call startMapLines directly if invoking mapLines after
+        start() has been called.
+
         Args:
             func (function): A function that takes one parameter, the line
                 from the pipe
@@ -812,47 +852,40 @@ class ProcessRunner:
 
         if self.mapLinesStarted is False or force is True:
             self.mapLinesStarted = True
+
+            # Keys are pipe names, values a sub-dict of clientIds and Process
+            # instances
             for pipeClientProcesses in list(self.pipeClientProcesses.values()):
+
+                # Keys are clientIds, values a list of Process instances
                 for client in list(pipeClientProcesses.values()):
-                    client.start()
+                    try:
+                        client.start()
+                    except AssertionError:
+                        pass
 
-    def collectLines(self, procPipeName=None, timeout=None):
-        """Retrieve output lines as a list for one or all pipes from the
-        process. Will start the process if it is not already running!
+    def getExpandingList(self, procPipeName=None):
+        """Get a shared list and one or more completion Events for lines from
+        one or more output pipes (not stdin). Non-blocking.
 
-        Kwargs:
-            procPipeName (string): One of "stdout" or "stderr"
-            timeout (float): Max length to stay in collectLines, raises Timeout
+        :param procPipeName: Name of a pipe to read, or None to read all
 
-        Raises:
-            ProcessRunner.Timeout
+        Returns a tuple of list, dict. List of the output lines, that expands
+        as mapLines adds to it, and a dict of [pipeName: Event,]. When an
+        Event is set, that means the given pipe has finished. The list is a
+        multiprocessing.Manager.list, shared with the mapLines process
+        populating the content.
 
-        Returns:
-            list. List of strings that are the output lines from selected pipes
+        Used as a component of collectLines.
+
+        :return: (List, Dict)
         """
-        manager = multiprocessing.Manager()
-        output_list = manager.list()  # Final list of lines to be returned
-        complete_events_dict = dict()  # Dict of the "complete" Events from
-                                       # mapLines
+        if procPipeName is not None:
+            if procPipeName.lower() == "stdin":
+                raise ValueError("Cannot get output from stdin")
 
-        # Count existing clients
-        current_client_count = 0
-        for pipe_name, client_dict in list(self.pipeClientProcesses.items()):
-            # Skip inputs
-            if pipe_name == "stdin":
-                continue
-
-            if len(client_dict) > 0:
-                current_client_count += len(client_dict)
-
-        # Warn if we've started with other clients attached; we can't reliably
-        # get output from the process if output has started flowing to other
-        # consumers.
-        if self.run.get("started") and current_client_count > 0:
-            self._log.warning("Other consumers are already attached and the"
-                              " process has started. Some data may have"
-                              " already been processed and will not be"
-                              " available from this method.")
+        output_list = self.queueManager.list()  # Final list of lines
+        complete_events_dict = dict()  # "complete" Events from mapLines
 
         # Function for mapLines to write into the shared list
         def to_output(line):
@@ -878,68 +911,73 @@ class ProcessRunner:
                                                                procPipeName)
             self._log.info("Registered {}".format(procPipeName))
 
-        # Start the process if it hasn't been already
-        if not self.run.get("started"):
-            self.start()
-
-        # Make sure this gets called again to trigger the maps we just added
-        else:
+        # If these are new subscribers, make sure they are populated
+        if self.started():
             self.startMapLines(force=True)
 
-        # Internal function to check whether we are done reading
-        def checkComplete(log, events_dict):
-            complete = True
+        return output_list, complete_events_dict
 
-            for pipe_name, complete_event in list(events_dict.items()):
-                # Check if the mapLines have completed
-                log.debug("Checking if {} client has finished"
-                          .format(pipe_name))
-                complete = complete and complete_event.is_set()
+    def getClientCount(self, procPipeName=None):
+        """Return the number of clients for a given pipe, or all pipes
 
-            log.debug("Process complete status: {}".format(complete))
+        :argument string procPipeName: Name of the pipe
 
-            return complete
+        :returns int
+        """
+        current_client_count = 0
 
-        # Main loop to check completeness
-        interval_delay = settings.config["NOTIFICATION_DELAY"] * 1000
-        timer = Timer(interval_ms=interval_delay)
+        if procPipeName is None:
+            for client_dict in self.pipeClientProcesses.values():
+                current_client_count += len(client_dict)
 
-        # Start timeout timer
-        if timeout is not None:
-            timeout_obj = Timer(timeout * 1000)
+        else:
+            client_dict = self.pipeClientProcesses[procPipeName]
+            current_client_count = len(client_dict)
 
-        while True:
-            # Check for a timeout
-            if timeout is not None:
-                if timeout_obj.interval():
-                    message = "collectLines() has timed out " \
-                              "at {} seconds".format(timeout)
-                    self._log.debug(message)
-                    raise Timeout(message)
+        return current_client_count
 
-            # If everyone is complete, finish!
-            if checkComplete(self._log, complete_events_dict):
-                break
+    def collectLines(self, procPipeName=None, timeout=None):
+        """Retrieve output lines as a list for one or all pipes from the
+        process. Will start the process if it is not already running!
 
-            # If not, wait a moment then check again
-            else:
-                # Let the user know what's happening if we're delayed
-                if timer.interval():
-                    self._log.info("Not complete for {:.1f} seconds"
-                                   .format(timer.lap() / 1000))
+        Removes trailing newlines.
+        Blocks until the sources are finished and queues drained.
 
-                time.sleep(0.005)
+        Kwargs:
+            procPipeName (string): One of "stdout" or "stderr"
+            timeout (float): Max length to stay in collectLines, raises Timeout
 
-        # Convert the ListProxy to a "real" list before returning it
-        output_list_final = list(output_list)
+        Raises:
+            ProcessRunner.Timeout
 
-        # Stop the Manager
-        manager.shutdown()
+        Returns:
+            list. List of strings that are the output lines from selected pipes
+        """
+        pipe_name = "output" if procPipeName is None else procPipeName
+        output_iter = getattr(self, pipe_name)
+        output_iter.settimeout(timeout=timeout)
 
-        return output_list_final
+        # Start the process if it hasn't been already
+        if not self.started():
+            self.start()
+
+        # Use the iterator to build a concrete list
+        output_list = list()
+        for line in output_iter:
+            output_list.append(line.rstrip('\n'))
+
+        return output_list
+
+    def readlines(self, procPipeName=None, timeout=None):
+        """Alias of collectLines. Like collectLines, also strips newlines.
+
+        Similar to IOBase.readlines, without the hint parameter.
+        """
+        return self.collectLines(procPipeName=procPipeName,
+                                 timeout=timeout)
 
     def write(self, file_path, procPipeName=None, append=False):
-        """Specify a file to direct output from the process
+        """Specify a file to direct output from the process. Does not block.
 
         :argument string file_path: Path to a file that should receive output
         :argument string procPipeName: Outbound pipe to reference (stdout,
@@ -949,6 +987,7 @@ class ProcessRunner:
 
         :return ProcessRunner
         """
+        # TODO: Figure out whether this should be refactored with Pr...Writer
         file_path = os.path.abspath(file_path)
 
         # Open a file handle with or without truncation

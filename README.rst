@@ -15,13 +15,18 @@ ProcessRunner
   *Parameters*
     - **command** REQUIRED ``[string,]`` The command to execute along with all parameters.
     - **cwd** OPTIONAL ``string`` Directory to switch into before execution. CWD does not apply to the location of the process executable itself, which must be on PATH or called with an absolute path.
+    - **autostart** OPTIONAL ``bool`` Whether to automatically start the command. Defaults to True. When False, call ``start()`` to trigger the command.
+    - **stdin** OPTIONAL ``bool`` Whether to enable the stdin pipe for the command.
+    - **log_name** OPTIONAL ``string`` Additional label to use in log records.
 
   *Properties*
     - Non-blocking: Returns immediately; the external process is managed in a new thread
+    - Output can be read by iterating over ``ProcessRunner.[stdout|stderr|output]``
+    - Supports ``with`` context manager syntax
 
 ProcessRunner class methods
 ---------------------------
-collectLines
+readlines (collectLines <v2.6)
   Obtains all output from stdout, stderr, or both in a list.
 
   *Parameters*

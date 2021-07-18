@@ -219,6 +219,14 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
                          textOut,
                          "Returned unicode text is not equivalent: In {}, Out {}".format(textIn, textOut))
 
+    def test_processrunner_getexpandinglist_raises_error_stdin(self):
+        command = ["echo", "bonjour"]
+
+        with ProcessRunner(command) as proc:
+            self.assertRaises(ValueError,
+                              proc.getExpandingList,
+                              procPipeName="stdin")
+
 
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromTestCase(ProcessRunnerCoreTestCase)
