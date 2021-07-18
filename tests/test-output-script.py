@@ -45,6 +45,13 @@ class TestScript(object):
                             default='0',
                             help='Time to sleep in seconds (float), '
                                  'after the first "block"')
+        parser.add_argument('--out-pipe',
+                            required=False,
+                            dest='out_pipe',
+                            nargs='?',
+                            default='stdout',
+                            help='Output to stdout, stderr, or both. Default '
+                                 'stdout.')
         parser.add_argument('--port',
                             required=False,
                             nargs='?',
@@ -92,7 +99,15 @@ class TestScript(object):
         count = int(count)
 
         for i in range(0, count):
-            self.stdout("Line: {} of {}\n".format(i+1, count))
+            message = "Line: {} of {}\n".format(i+1, count)
+
+            if self.config['out_pipe'] == 'stdout':
+                self.stdout(message)
+            elif self.config['out_pipe'] == 'stderr':
+                self.stderr(message)
+            else:
+                self.stdout("{}: {}".format("stdout", message))
+                self.stderr("{}: {}".format("stderr", message))
 
             if (i+1) % int(self.config['block']) == 0:
                 time.sleep(float(self.config['sleep']))
