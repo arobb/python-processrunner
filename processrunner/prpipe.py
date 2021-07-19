@@ -7,12 +7,15 @@ from builtins import dict
 import logging
 import random
 
-from multiprocessing import Event, Lock, Process
+from multiprocessing import Event, Lock
 
 try:  # Python 2.7
     from Queue import Empty
+    from multiprocessing import Process
 except ImportError:  # Python 3.x
     from queue import Empty
+    import multiprocessing
+    Process = multiprocessing.get_context("fork").Process
 
 from .queuelink import QueueLink
 from .exceptionhandler import HandleAlreadySet

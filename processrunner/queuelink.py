@@ -8,15 +8,18 @@ import functools
 import logging
 import random
 
-from multiprocessing import Process, Lock, Event
+from multiprocessing import Lock, Event
 
 try:  # Python 2.7
     from Queue import Empty  # This will fail in Python 3
     from funcsigs import signature
+    from multiprocessing import Process
 
 except ImportError:  # Python 3.x
     from queue import Empty
     from inspect import signature
+    import multiprocessing
+    Process = multiprocessing.get_context("fork").Process
 
 from .exceptionhandler import ProcessNotStarted
 

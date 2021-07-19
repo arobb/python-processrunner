@@ -2,8 +2,6 @@
 from __future__ import unicode_literals
 from builtins import dict
 from subprocess import PIPE, Popen
-from multiprocessing import Process
-from multiprocessing.managers import BaseManager
 
 import codecs
 import logging
@@ -35,7 +33,8 @@ class _Command(object):
                  cwd=None,
                  autostart=True,
                  std_queues=None,
-                 log_name=None):
+                 log_name=None,
+                 global_config={}):
         """
         Args:
             command (list): List of strings to pass to subprocess.Popen
@@ -48,6 +47,9 @@ class _Command(object):
         # Unique ID
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+
+        settings.init()
+        settings.config = global_config
 
         self._initializeLogging()
 
@@ -138,7 +140,6 @@ class _Command(object):
             "stdout": PIPE,
             "stderr": PIPE,
             "universal_newlines": False,
-            "bufsize": 1,  # Line buffered
             "close_fds": ON_POSIX,
             "cwd": self.cwd
         }

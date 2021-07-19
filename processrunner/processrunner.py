@@ -12,13 +12,15 @@ import random
 import sys
 import time
 
-from multiprocessing import Process, Event
+from multiprocessing import Event
 from deprecated import deprecated
 
 try:  # Python 2.7
     from Queue import Empty
+    from multiprocessing import Process
 except ImportError:  # Python 3.x
     from queue import Empty
+    Process = multiprocessing.get_context("fork").Process
 
 from . import settings
 from .priterator import PrIterator
@@ -155,7 +157,8 @@ class ProcessRunner:
                                             cwd=self.cwd,
                                             autostart=self.autostart,
                                             std_queues=self.stdQueues,
-                                            log_name=self.log_name)
+                                            log_name=self.log_name,
+                                            global_config=settings.config)
 
         # If stdin requested, enable it
         if self.stdin is not None:
@@ -761,6 +764,17 @@ class ProcessRunner:
                        .format(clientId, procPipeName))
 
         def doWrite(run, func, complete, clientId, procPipeName, stop_event):
+            """Call a function with each line from the pipe client
+
+            :argument ProcessRunner run: ProcessRunner instance
+            :argument function func: Function that takes one string argument
+            :argument Event complete: An Event to set when this is finished
+            :argument int clientId: Client ID corresponding to the procPipeName
+            :argument string procPipeName: Name of a pipe
+            :argument Event stop_event: External indicator to exit
+
+            :returns Event
+            """
             logger_name = "{}.mapLines.{}".format(__name__, clientId)
             log = logging.getLogger(logger_name)
             log.addHandler(logging.NullHandler())

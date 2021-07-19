@@ -4,8 +4,6 @@ Documented changes to the project.
 
 Version 2.5.0+
 --------------
-- Mimic the IO read_line generator
-- Add ProcessRunner.stdout/stderr/output attributes as iterators
 - Internal ContentWrapper class manage value changes across ContentWrapper.THRESHOLD
 -- If the values grow or shink, ContentWrapper should adapt its management
 - Internal ContentWrapper class add created and updated timestamps to enable sorting
@@ -14,6 +12,17 @@ Version 2.5.0+
 - Create a performance baseline compared to shell pipe actions
 - DAG feature extension
 -- Better track when stdout/stderr are closed to then close stdin on the receiving instance
+
+Version 2.5.1
+-------------
+Adds additional ways to interact with output, as well as Python 3.8+ on macOS.
+
+Minor features:
+- Mimic the IO read_line generator
+- Add ProcessRunner.stdout/stderr/output attributes as iterators
+
+Fixes:
+- Compatibility with Python 3.8+ on macOS following change to default multiprocessing start method related to Python issue 33725
 
 Version 2.5.0
 -------------

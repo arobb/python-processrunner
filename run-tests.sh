@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
-pythonlist=("python27" "python2.7" "python35" "python3.5" "python36" "python3.6" "python37" "python3.7")
+pythonlist=()
+pythonlist+=("python27" "python2.7")
+pythonlist+=("python37" "python3.7")
+pythonlist+=("python38" "python3.8")
+pythonlist+=("python39" "python3.9")
 runlist=()
 
 # Determine which pythons exist
