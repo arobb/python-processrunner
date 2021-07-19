@@ -13,7 +13,7 @@ Version 2.5.0+
 - DAG feature extension
 -- Better track when stdout/stderr are closed to then close stdin on the receiving instance
 
-Version 2.5.1
+Version 2.5.2
 -------------
 Adds additional ways to interact with output, as well as Python 3.8+ on macOS.
 
@@ -23,6 +23,10 @@ Minor features:
 
 Fixes:
 - Compatibility with Python 3.8+ on macOS following change to default multiprocessing start method related to Python issue 33725
+
+Version 2.5.1
+-------------
+Update to readme that didn't make it into 2.5.0.
 
 Version 2.5.0
 -------------
