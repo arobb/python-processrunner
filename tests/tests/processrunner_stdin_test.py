@@ -1,22 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+
 import os
-import random
-import signal
-import sys
-import time
 import unittest
 
-from parameterized import parameterized
-from tempfile import NamedTemporaryFile
-from codecs import getreader
-
-from tests.tests import context
-from processrunner import ProcessRunner
-from processrunner.timer import Timer
-from processrunner.exceptionhandler import ExceptionHandler
-from processrunner.exceptionhandler import HandleNotSet
 from processrunner.exceptionhandler import Timeout
+
+from processrunner import ProcessRunner
+
 
 class ProcessRunnerTestCase(unittest.TestCase):
     def setUp(self):
@@ -35,7 +26,8 @@ class ProcessRunnerTestCase(unittest.TestCase):
             output_text = ""
             force_fail = False
             try:
-                output_text = proc.collectLines(timeout=1)
+                # High timeout to support slow parallel tests
+                output_text = proc.collectLines(timeout=5)
             except Timeout as e:
                 print("Timed out")
                 force_fail = True

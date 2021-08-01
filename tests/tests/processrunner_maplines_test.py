@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
 
 #
 # ProcessRunnerMaplinesTestCase seems to reliably reproduce an error where the return code
@@ -12,10 +11,11 @@ import os
 import sys
 import time
 import unittest
+from builtins import str as text
 
-from tests.tests import context
+from processrunner import ProcessRunner
+from processrunner import writeOut
 from tests.tests.spinner import Spinner
-from processrunner import ProcessRunner, writeOut
 
 '''
 # Watch the main queue fill and empty
@@ -120,7 +120,7 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
                 # time.sleep(0.1)  # 0.1 seems to reliably work, 0.01 reliably breaks
 
                 # Try to see if an alternative to wait() will cause the same issue
-                proc.wait(timeout=1)
+                proc.wait(timeout=5)  # 1s wasn't enough w parallel tests
                 # proc.startMapLines()
                 # while proc.poll() is None:
                 #     time.sleep(0.01)
