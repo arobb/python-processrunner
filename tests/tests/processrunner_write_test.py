@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
 
 import os
 import time
 import unittest
-
-from parameterized import parameterized
 from tempfile import NamedTemporaryFile
 
-from tests.tests import context
-from processrunner.timer import Timer
+from parameterized import parameterized
+
 from processrunner import ProcessRunner
 
 '''
@@ -45,9 +42,8 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         """Valdiate write will raise an error when given a bad name
         """
         command = ["echo", "bonjour"]
-        output_file_path = os.path.join(self.sampleCommandDir,
-                                        'content',
-                                        'new-hello.txt')
+        temp_file = NamedTemporaryFile()
+        output_file_path = temp_file.name
 
         with ProcessRunner(command) as proc:
             self.assertRaises(KeyError,
@@ -65,9 +61,8 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
         redirected to
         """
         test_len = 12
-        output_file_path = os.path.join(self.sampleCommandDir,
-                                        'content',
-                                        'new-hello.txt')
+        temp_file = NamedTemporaryFile()
+        output_file_path = temp_file.name
 
         command = [self.sampleCommandPath,
                    "--lines", "{}".format(test_len),
