@@ -1,6 +1,11 @@
 *.pyc
+__pycache__
 *.egg-info
 .eggs
 dist
 venv*
 .idea/
+coverage*
+!coverage/html/.gitinclude
+.pytest_cache/
+.tox

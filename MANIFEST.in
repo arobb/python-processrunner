@@ -1,4 +1,5 @@
-include VERSION
-recursive-exclude tests *
-exclude *.sh
-exclude .*
+graft src
+include src/processrunner/VERSION
+prune .tox
+prune tests
+global-exclude *.pyc __pycache__

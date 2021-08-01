@@ -2,6 +2,24 @@ Publishing ProcessRunner
 ========================
 Information on contributing may get added later.
 
+Testing
+-------
+Some test commands
+
+.. code-block::
+
+    # Basic
+    tox
+
+    # Recreate the virtualenvs
+    tox --recreate
+
+    # Run just one environment
+    tox -e py37
+
+    # Run just one test
+    tox -- tests/tests/processrunner_core_test.py::ProcessRunnerCoreTestCase::test_processrunner_onek_check_content
+
 Publishing
 ----------
 Configure Twine and the PyPi RC file at `~/.pypirc` .
