@@ -3,10 +3,10 @@
 Exception management classes
 """
 from __future__ import unicode_literals
-import sys
-import traceback
 
 import logging
+import sys
+import traceback
 
 
 class SIGINTException(Exception):

@@ -1,18 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
-from builtins import dict
 
 import logging
-
-from multiprocessing import Process, Lock
 
 try:  # Python 2.7
     from Queue import Empty
 except ImportError:  # Python 3.x
     from queue import Empty
 
-from . import settings
 from .prpipe import _PrPipe
 from .contentwrapper import ContentWrapper
 

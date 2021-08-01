@@ -1,20 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
-from builtins import dict
 
 import logging
-import time
 
 try:  # Python 2.7
     from Queue import Empty
 except ImportError:  # Python 3.x
     from queue import Empty
 
-from . import settings
 from .prpipe import _PrPipe
 from .contentwrapper import ContentWrapper
-from .exceptionhandler import HandleNotSet
 
 
 # Private class only intended to be used by ProcessRunner
@@ -72,9 +67,6 @@ class _PrPipeWriter(_PrPipe):
                 try:
                     # line = queue.get_nowait()
                     line = queue.get(timeout=0.05)
-
-                    # TODO: Delete this line
-                    # log.debug("Line for {}: '{}'".format(pipe_name, line))
 
                     # Extract the content if the line is in a ContentWrapper
                     # Make sure there is a trailing newline

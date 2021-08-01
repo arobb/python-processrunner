@@ -2,9 +2,9 @@
 from __future__ import unicode_literals
 
 from kitchen.text.converters import to_bytes
-from .kitchenpatch import getwriter
 
 from .exceptionhandler import ExceptionHandler
+from .kitchenpatch import getwriter
 
 
 def writeOut(pipe, outputPrefix):

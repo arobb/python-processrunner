@@ -4,8 +4,8 @@ import random
 import time
 
 from . import settings
-from .timer import Timer
 from .exceptionhandler import Timeout
+from .timer import Timer
 
 
 class PrIterator(object):

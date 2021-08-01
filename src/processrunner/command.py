@@ -1,23 +1,23 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import dict
-from subprocess import PIPE, Popen
 
 import codecs
 import logging
 import random
 import signal
 import time
-
-from .kitchenpatch import getwriter
+from subprocess import PIPE
+from subprocess import Popen
 
 from . import settings
-from .prpipewriter import _PrPipeWriter
-from .prpipereader import _PrPipeReader
 from .exceptionhandler import ProcessAlreadyStarted
 from .exceptionhandler import ProcessNotStarted
 from .exceptionhandler import Timeout
+from .kitchenpatch import getwriter
+from .prpipereader import _PrPipeReader
+from .prpipewriter import _PrPipeWriter
 from .timer import Timer
+
 
 # Private class only intended to be used by ProcessRunner
 class _Command(object):

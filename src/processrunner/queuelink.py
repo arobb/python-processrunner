@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """Manages the pull/push with queues"""
 from __future__ import unicode_literals
-from builtins import str as text
-from builtins import dict
 
 import functools
 import logging
 import random
-
-from multiprocessing import Lock, Event
+from builtins import dict
+from builtins import str as text
+from multiprocessing import Event
+from multiprocessing import Lock
 
 try:  # Python 2.7
     from Queue import Empty  # This will fail in Python 3

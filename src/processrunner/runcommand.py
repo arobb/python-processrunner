@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Easy invocation of a command with default IO streams"""
 from __future__ import unicode_literals
+
 import sys
 
 from .processrunner import ProcessRunner

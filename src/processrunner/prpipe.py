@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 """Parent class for _PrPipeReader and _PrPipeWriter"""
 from __future__ import unicode_literals
-from builtins import str as text
-from builtins import dict
 
 import logging
 import random
-
-from multiprocessing import Event, Lock
+from multiprocessing import Event
+from multiprocessing import Lock
 
 try:  # Python 2.7
     from Queue import Empty

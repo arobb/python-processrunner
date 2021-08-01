@@ -16,12 +16,15 @@ and use the results of get_version() as your package version:
     )
 """
 
-__all__ = ('get_version')
+__all__ = ('get_git_version')
 
-from os.path import dirname, isdir, join
+import argparse
 import os
 import re
 import subprocess
+from os.path import dirname
+from os.path import isdir
+from os.path import join
 
 version_re = re.compile('^Version: (.+)$', re.M)
 
@@ -29,7 +32,7 @@ version_re = re.compile('^Version: (.+)$', re.M)
 def get_git_version():
     d = dirname(__file__)
 
-    if isdir(join(d, '.git')):
+    if isdir(join(d, '..', '..', '.git')):
         # Get the version using "git describe".
         cmd = 'git describe --tags --match [0-9]*'.split()
         try:
@@ -68,4 +71,14 @@ def get_git_version():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Get the current Git version')
+    parser.add_argument('--outfile', required=False, default=None,
+                        help='File to write the version to.')
+    args = parser.parse_args().__dict__
+    outfile_path = None
+    if args['outfile'] is not None:
+        outfile_path = os.path.abspath(args['outfile'])
+        with open(outfile_path, 'w') as outfile:
+            outfile.write(get_git_version())
+
     print(get_git_version())

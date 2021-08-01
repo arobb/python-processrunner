@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-import sys
 
+import sys
 from multiprocessing.managers import BaseManager
 
 from .command import _Command

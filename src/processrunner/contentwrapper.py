@@ -7,12 +7,12 @@ import logging
 import os
 import sys
 import tempfile
-
 from codecs import getreader
 
-from .enum import enum
-from .kitchenpatch import getwriter
 from kitchen.text.converters import to_bytes
+
+from .kitchenpatch import getwriter
+from .prenum import enum
 from .timer import Timer
 
 # Py2 uses "file" as the base class for IO

@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 """Easily execute external processes"""
 from __future__ import unicode_literals
-from past.builtins import basestring
-from builtins import str as text
-from builtins import dict
 
 import logging
 import multiprocessing
@@ -11,9 +8,12 @@ import os
 import random
 import sys
 import time
-
+from builtins import dict
+from builtins import str as text
 from multiprocessing import Event
+
 from deprecated import deprecated
+from past.builtins import basestring
 
 try:  # Python 2.7
     from Queue import Empty
@@ -205,7 +205,7 @@ class ProcessRunner:
 
             # Warn the user about potential loss
             if self.started() and client_count > 0:
-                pipe_name = "stdout and stderr" if item == "other" else item
+                pipe_name = "stdout and stderr" if item == "output" else item
                 self._log.warning("Potential for missing lines! Other"
                                   " consumers are already attached and the"
                                   " process has started. Some data may have"
