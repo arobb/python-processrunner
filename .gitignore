@@ -7,5 +7,6 @@ venv*
 .idea/
 coverage*
 !coverage/html/.gitinclude
+!coverage/xml/.gitinclude
 .pytest_cache/
 .tox

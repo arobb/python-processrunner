@@ -2,6 +2,7 @@ Documentation for the Code
 **************************
 
 .. automodule:: processrunner
+   :noindex: __init__
 
 Helper functions
 ================
@@ -9,10 +10,9 @@ Helper functions
 These...
 
 .. autofunction:: processrunner.runCommand
-   :members:
 
 ProcessRunner -- Class
 ======================
 
-.. automodule:: processrunner.ProcessRunner
+.. automodule:: processrunner
    :members:

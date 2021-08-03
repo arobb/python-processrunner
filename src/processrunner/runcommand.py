@@ -15,18 +15,16 @@ def runCommand(command,
 
     returnAllContent as False (default):
 
-    Args:
-        command (list): List of strings to pass to subprocess.Popen
-        outputPrefix(str): String to prepend to all output lines.
-            Defaults to 'ProcessRunner> '
-        returnAllContent(bool): False (default) sends command stdout/stderr to
-            regular interfaces, True collects and returns them
+    :param list command: List of strings to pass to subprocess.Popen
+    :param str outputPrefix: String to prepend to all output lines.
+           Defaults to 'ProcessRunner> '
+    :param bool returnAllContent: False (default) sends command stdout/stderr
+           to regular interfaces, True collects and returns them
 
     Returns:
-        int The return code from the command
-            (returnAllContent as False (default))
-        tuple (return code, list of output) The return code and any output
-            content (returnAllContent as True)
+    int The return code from the command (returnAllContent as False (default))
+    tuple (return code, list of output) The return code and any output
+    content (returnAllContent as True)
     """
     with ProcessRunner(command) as proc:
         if returnAllContent:
