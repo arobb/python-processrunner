@@ -1,5 +1,5 @@
-graft src
-include src/processrunner/VERSION
-prune .tox
 prune tests
+prune coverage
 global-exclude *.pyc __pycache__
+global-exclude .gitignore
+exclude *.sh

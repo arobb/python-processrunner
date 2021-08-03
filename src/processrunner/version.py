@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-from os import path
+"""Get the package version"""
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version
 
 
 def get_version():
-    here = path.abspath(path.dirname(__file__))
-
-    # Version information
+    """Get the package version"""
     try:
-        with open(path.join(here, 'VERSION')) as vf:
-            version = vf.readline()
+        _version = version(__name__)
+    except PackageNotFoundError:
+        # package is not installed
+        _version = "0.0.0"
 
-    except IOError:
-        version = "0.0.0"
-
-    return version
+    return _version

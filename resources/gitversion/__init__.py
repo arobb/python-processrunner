@@ -1,1 +1,0 @@
-from resources.gitversion.gitversion import get_git_version
