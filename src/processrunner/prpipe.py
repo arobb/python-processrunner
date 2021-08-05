@@ -73,8 +73,8 @@ class _PrPipe(object):
                                     log_name=self.log_name)
 
         # Store the queue in the correct orientation in the queue link
-        self.queue_link.registerQueue(queue_proxy=self.queue,
-                                      direction=self.queue_direction)
+        self.queue_link.register_queue(queue_proxy=self.queue,
+                                       direction=self.queue_direction)
 
         # Lock to notify readers/writers that a read/write is in progress
         self.queue_lock = Lock()
@@ -172,7 +172,7 @@ class _PrPipe(object):
         Returns:
             QueueProxy
         """
-        return self.queue_link.getQueue(clientId)
+        return self.queue_link.get_queue(clientId)
 
     def stop(self):
         """Stop the adapter and queue link.
@@ -211,14 +211,14 @@ class _PrPipe(object):
         with self.queue_lock:
             if clientId is not None:
                 empty = self.queue.empty() \
-                        and self.queue_link.isEmpty(clientId)
+                        and self.queue_link.is_empty(clientId)
 
                 self._log.debug("Reporting pipe empty for client {}: {}"
                                 .format(clientId, empty))
 
             else:
                 empty = self.queue.empty() \
-                        and self.queue_link.isEmpty()
+                        and self.queue_link.is_empty()
 
                 self._log.debug("Reporting pipe empty: {}".format(empty))
 
@@ -253,19 +253,19 @@ class _PrPipe(object):
         # Checks a similar function on the queue_link
         drained = drained and self.queue_link.is_drained(queue_id=clientId)
 
-        # Not checking self.isEmpty because that is effectively done by
+        # Not checking self.is_empty because that is effectively done by
         # running self.queue_link.is_drained()
 
         return drained
 
     def registerClientQueue(self, queueProxy):
-        return self.queue_link.registerQueue(queue_proxy=queueProxy,
-                                             direction=self.client_direction)
+        return self.queue_link.register_queue(queue_proxy=queueProxy,
+                                              direction=self.client_direction)
 
     def unRegisterClientQueue(self, clientId):
-        return self.queue_link.unRegisterQueue(queue_id=clientId,
-                                               direction=self.client_direction)
+        return self.queue_link.unregister_queue(queue_id=clientId,
+                                                direction=self.client_direction)
 
     def destructiveAudit(self):
-        return self.queue_link.destructiveAudit(direction=
+        return self.queue_link.destructive_audit(direction=
                                                 self.client_direction)

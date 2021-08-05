@@ -727,7 +727,7 @@ class ProcessRunner:
         """Force one line of output each from attached pipes
 
         Used for debugging issues that might relate to data stuck in the
-        queues.  Triggers the pipes' destructiveAudit function which prints
+        queues.  Triggers the pipes' destructive_audit function which prints
         the last line of the queue or an 'empty' message.
         """
         return self.run.destructiveAudit()

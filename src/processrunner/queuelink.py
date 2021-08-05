@@ -43,7 +43,7 @@ def validate_direction(func):
             arg_direction = bound.arguments['direction']
 
             # If the direction is valid, just keep going
-            if arg_direction == "source" or arg_direction == "destination":
+            if arg_direction in ("source", "destination"):
                 pass
 
             # If the direction is invalid, throw an error
@@ -58,14 +58,21 @@ def validate_direction(func):
 
 
 class QueueLink(object):
+    """Manages publishing from source and client queues"""
+
     def __init__(self, name=None, log_name=None):
         """Manages the pull/push with PrPipe queues"""
+        # pylint: disable=C0103
         self.id = \
-            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+            ''.join([random.choice('0123456789ABCDEF')
+                     for x in range(6)])
+        # pylint: enable=C0103
+
         self.name = name
         self.log_name = log_name
 
-        self._initializeLogging()
+        self._log = None
+        self._initialize_logging()
 
         # Indicate whether we have ever been started
         self.started = Event()
@@ -75,12 +82,12 @@ class QueueLink(object):
 
         # List of locks allows decoupled IO while also preventing the set of
         # queues from changing during IO operations
-        self.queuesLock = Lock()
-        self.lastQueueId = 0
-        self.clientQueuesSource = dict()
-        self.clientQueuesDestination = dict()
-        self.clientPairPublishers = dict()
-        self.publisherStops = dict()
+        self.queues_lock = Lock()
+        self.last_queue_id = 0
+        self.client_queues_source = dict()
+        self.client_queues_destination = dict()
+        self.client_pair_publishers = dict()
+        self.publisher_stops = dict()
 
     # Class contains Locks and Queues which cannot be pickled
     def __getstate__(self):
@@ -91,7 +98,7 @@ class QueueLink(object):
         """
         raise Exception("Don't pickle me!")
 
-    def _initializeLogging(self):
+    def _initialize_logging(self):
         if hasattr(self, '_log'):
             if self._log is not None:
                 return
@@ -106,14 +113,15 @@ class QueueLink(object):
             name = "{}.{}".format(name, self.log_name)
 
         self._log = logging.getLogger(name)
-        self.addLoggingHandler(logging.NullHandler())
+        self.add_logging_handler(logging.NullHandler())
 
-    def addLoggingHandler(self, handler):
+    def add_logging_handler(self, handler):
+        """Add a logging handler to the logger"""
         self._log.addHandler(handler)
 
     def stop(self):
         """Use to stop somewhat gracefully"""
-        self.stopPublishers()
+        self.stop_publishers()
 
     @staticmethod
     def publisher(stop_event,
@@ -135,14 +143,14 @@ class QueueLink(object):
 
         while True:
             try:
-                log.debug("Trying to get line from source in pair {}"
-                          .format(source_id))
+                log.debug("Trying to get line from source in pair %s",
+                          source_id)
                 line = source_queue.get(timeout=0.05)
 
                 # Distribute the line to all downstream queues
                 for dest_id, dest_queue in dest_queues_dict.items():
-                    log.info("Writing line from source {} to dest {}"
-                             .format(source_id, dest_id))
+                    log.info("Writing line from source %s to dest %s",
+                             source_id, dest_id)
                     dest_queue.put(line)
 
                 # Mark that we've finished processing the item from the queue
@@ -155,14 +163,16 @@ class QueueLink(object):
                     return
 
             except Empty:
-                log.debug("No lines to get from source in pair {}"
-                          .format(source_id))
+                log.debug("No lines to get from source in pair %s", source_id)
 
                 if stop_event.is_set():
                     log.info("Stopping due to stop event")
                     return
 
-    def getQueue(self, queue_id):
+            except EOFError:
+                log.debug("Source in pair %s no longer available", source_id)
+
+    def get_queue(self, queue_id):
         """Retrieve a client's Queue proxy object
 
         Args:
@@ -171,15 +181,15 @@ class QueueLink(object):
         Returns:
             QueueProxy
         """
-        if queue_id in self.clientQueuesSource:
-            queue_list = self.clientQueuesSource
+        if queue_id in self.client_queues_source:
+            queue_list = self.client_queues_source
         else:
-            queue_list = self.clientQueuesDestination
+            queue_list = self.client_queues_destination
 
         return queue_list[text(queue_id)]
 
     @validate_direction
-    def registerQueue(self, queue_proxy, direction):
+    def register_queue(self, queue_proxy, direction):
         """Register a multiprocessing.JoinableQueue to this link
 
         For a new "source" queue, a publishing process will be created to send
@@ -199,17 +209,16 @@ class QueueLink(object):
             string. The client's ID for access to this queue
 
         """
-        # Get the 'direction' names with the first letter capitalized
-        direction_caps = direction.capitalize()
-        op_direction_caps = "Destination" if direction == "source" \
-            else "Source"
+        # Lowercase
+        direction = direction.lower()
+        op_direction = "destination" if direction == "source" else "source"
 
-        with self.queuesLock:
+        with self.queues_lock:
             # Get the queue list and opposite queue list
-            queue_dict = getattr(self, "clientQueues{}"
-                                 .format(direction_caps))
-            op_queue_dict = getattr(self, "clientQueues{}"
-                                    .format(op_direction_caps))
+            queue_dict = getattr(self, "client_queues_{}"
+                                 .format(direction))
+            op_queue_dict = getattr(self, "client_queues_{}"
+                                    .format(op_direction))
 
             # Make sure we don't accidentally create a loop, or add multiple
             # times
@@ -222,8 +231,8 @@ class QueueLink(object):
                                  " a circular reference.".format(direction))
 
             # Increment the current queue_id
-            queue_id = self.lastQueueId + 1
-            self.lastQueueId = queue_id
+            queue_id = self.last_queue_id + 1
+            self.last_queue_id = queue_id
 
             # Store the queue proxy in the appropriate queue list
             queue_dict[text(queue_id)] = queue_proxy
@@ -238,12 +247,12 @@ class QueueLink(object):
 
                 # Create and store a new stop event
                 stop_event = Event()
-                self.publisherStops[text(source_id)] = stop_event
+                self.publisher_stops[text(source_id)] = stop_event
 
                 # Start the publisher
                 # This doesn't do anything unless there are some available
                 # destinations
-                self.startPublisher(source_id)
+                self.start_publisher(source_id)
 
             # New destination:
             #   Stop all existing publishing processes and restart with updated
@@ -252,32 +261,32 @@ class QueueLink(object):
                 self._log.debug("Registering destination client")
 
                 # Stop current processes
-                self.stopPublishers()
+                self.stop_publishers()
 
                 # Restart publishers with the updated destinations
-                for source_id in self.clientQueuesSource.keys():
-                    self._log.debug("Starting publisher {}".format(source_id))
-                    self.startPublisher(source_id)
+                for source_id in self.client_queues_source:
+                    self._log.debug("Starting publisher %s", source_id)
+                    self.start_publisher(source_id)
 
         return text(queue_id)
 
-    def startPublisher(self, source_id):
-        """Eliminate duplicated Process() call in registerQueue
+    def start_publisher(self, source_id):
+        """Eliminate duplicated Process() call in register_queue
 
         Start a publisher process to move items from the source queue to
         the destination queues
 
-        Should only be called by registerQueue and unregisterQueue (they hold
+        Should only be called by register_queue and unregisterQueue (they hold
         a lock for the queue dictionaries while this runs.)
         """
-        stop_event = self.publisherStops[text(source_id)]
-        source_queue = self.clientQueuesSource[text(source_id)]
-        dest_queues_dict = self.clientQueuesDestination
+        stop_event = self.publisher_stops[text(source_id)]
+        source_queue = self.client_queues_source[text(source_id)]
+        dest_queues_dict = self.client_queues_destination
         destination_names = "-".join(dest_queues_dict.keys())
 
         # Make sure we don't ovewrite a running Process
         try:
-            if self.clientPairPublishers[text(source_id)].exitcode is None:
+            if self.client_pair_publishers[text(source_id)].exitcode is None:
                 raise ValueError("Cannot overwrite a running Process!")
 
         # If this is new, there won't be an existing value here
@@ -290,8 +299,8 @@ class QueueLink(object):
 
         # Start a publisher process to move items from the source
         # queue to the destination queues
-        self._log.info("Starting queue link for source {} to {}"
-                       .format(source_id, destination_names))
+        self._log.info("Starting queue link for source %s to %s",
+                       source_id, destination_names)
 
         # Name the process
         if self.log_name is not None:
@@ -310,23 +319,22 @@ class QueueLink(object):
         proc.daemon = True
         proc.start()
         self.started.set()
-        self.clientPairPublishers[text(source_id)] = proc
+        self.client_pair_publishers[text(source_id)] = proc
 
-    def stopPublisher(self, source_id):
+    def stop_publisher(self, source_id):
         """Stop a current publisher process"""
-        self._log.debug("Stopping publisher {}".format(source_id))
-        stop_event = self.publisherStops[text(source_id)]
+        self._log.debug("Stopping publisher %s", source_id)
+        stop_event = self.publisher_stops[text(source_id)]
         stop_event.set()
 
         # Wait for the process to stop
         try:
-            proc_old = self.clientPairPublishers[text(source_id)]
+            proc_old = self.client_pair_publishers[text(source_id)]
 
             while True:
                 proc_old.join(timeout=5)
                 if proc_old.exitcode is None:
-                    self._log.info("Waiting for client {} to stop"
-                                   .format(source_id))
+                    self._log.info("Waiting for client %s to stop", source_id)
                 else:
                     break
 
@@ -337,14 +345,14 @@ class QueueLink(object):
         # Flip the "stop" event back to normal
         stop_event.clear()
 
-    def stopPublishers(self):
+    def stop_publishers(self):
         """Stop current publisher processes"""
         self._log.debug("Stopping any current publishers")
-        for source_id in self.clientQueuesSource.keys():
-            self.stopPublisher(source_id)
+        for source_id in self.client_queues_source.keys():
+            self.stop_publisher(source_id)
 
     @validate_direction
-    def unRegisterQueue(self, queue_id, direction):
+    def unregister_queue(self, queue_id, direction):
         """Detach a Queue proxy from this _PrPipe
 
         Returns the clientId that was removed
@@ -357,10 +365,12 @@ class QueueLink(object):
             string. ID of the client queue
 
         """
-        direction_caps = direction.capitalize()
+        # Lowercase
+        direction = direction.lower()
 
-        with self.queuesLock:
-            queue_list = getattr(self, "clientQueues{}".format(direction_caps))
+        with self.queues_lock:
+            queue_list = getattr(self,
+                                 "client_queues_{}".format(direction))
             if text(queue_id) in queue_list:
                 queue_list.pop(queue_id)
 
@@ -369,22 +379,22 @@ class QueueLink(object):
 
                 # Stop the source publisher
                 # Wait for the process to stop
-                self.stopPublisher(source_id)
+                self.stop_publisher(source_id)
 
                 # Remove the stop
-                self.publisherStops.pop(queue_id)
+                self.publisher_stops.pop(queue_id)
 
             else:
                 # Stop current processes
-                self.stopPublishers()
+                self.stop_publishers()
 
                 # Restart publishers with the updated destinations
-                for source_id in self.clientQueuesSource.keys():
-                    self.startPublisher(source_id)
+                for source_id in self.client_queues_source.keys():
+                    self.start_publisher(source_id)
 
         return text(queue_id)
 
-    def isEmpty(self, queue_id=None):
+    def is_empty(self, queue_id=None):
         """Checks whether the primary Queue or any clients' Queues are empty
 
         Returns True ONLY if ALL queues are empty if clientId is None
@@ -397,38 +407,37 @@ class QueueLink(object):
         Returns:
             bool
         """
-        with self.queuesLock:
+        with self.queues_lock:
             if queue_id is not None:
-                self._log.debug("Checking if {} is empty".format(queue_id))
+                self._log.debug("Checking if %s is empty", queue_id)
                 empty = True
 
                 # If this is a downstream queue, we need to make sure all
                 # upstream queues are empty, too
-                if queue_id in self.clientQueuesDestination.keys():
-                    self._log.debug("First checking upstream queue(s) of {}"
-                                    .format(queue_id))
+                if queue_id in self.client_queues_destination.keys():
+                    self._log.debug("First checking upstream queue(s) of %s",
+                                    queue_id)
 
-                    for source_id in self.clientQueuesSource.keys():
-                        source_empty = self.getQueue(source_id).empty()
-                        self._log.info("Source {} is empty: {}"
-                                        .format(source_id, source_empty))
+                    for source_id in self.client_queues_source.keys():
+                        source_empty = self.get_queue(source_id).empty()
+                        self._log.info("Source %s is empty: %s",
+                                       source_id, source_empty)
                         empty = empty and source_empty
 
-                queue_empty = self.getQueue(queue_id).empty()
+                queue_empty = self.get_queue(queue_id).empty()
                 empty = empty and queue_empty
-                self._log.info("{} is empty: {}"
-                                .format(queue_id, queue_empty))
+                self._log.info("%s is empty: %s", queue_id, queue_empty)
 
             else:
                 empty = True
 
-                for q in list(self.clientQueuesSource.values()):
-                    empty = empty and q.empty()
+                for client_queue in list(self.client_queues_source.values()):
+                    empty = empty and client_queue.empty()
 
-                for q in list(self.clientQueuesDestination.values()):
-                    empty = empty and q.empty()
+                for client_queue in list(self.client_queues_destination.values()):
+                    empty = empty and client_queue.empty()
 
-            self._log.debug("Reporting queue link empty: {}".format(empty))
+            self._log.debug("Reporting queue link empty: %s", empty)
             return empty
 
     def is_alive(self):
@@ -442,7 +451,7 @@ class QueueLink(object):
         if not self.started.is_set():
             raise ProcessNotStarted("{} has not started".format(self.name))
 
-        for proc in self.clientPairPublishers.values():
+        for proc in self.client_pair_publishers.values():
             alive = alive and proc.is_alive()
 
         return alive
@@ -463,12 +472,12 @@ class QueueLink(object):
         if not self.started.is_set():
             return False
 
-        drained = drained and self.isEmpty(queue_id=queue_id)
+        drained = drained and self.is_empty(queue_id=queue_id)
 
         return drained
 
     @validate_direction
-    def destructiveAudit(self, direction):
+    def destructive_audit(self, direction):
         """Print a line from each client Queue attached to this _PrPipe
 
         Args:
@@ -476,16 +485,16 @@ class QueueLink(object):
 
         This is a destructive operation, as it *removes* a line from each Queue
         """
-        direction_caps = direction.capitalize()
+        direction = direction.lower()
 
-        with self.queuesLock:
-            queue_list = getattr(self, "clientQueues{}".format(direction_caps))
+        with self.queues_lock:
+            queue_list = getattr(self,
+                                 "client_queues_{}".format(direction))
 
-            for queue_id in list(queue_list):
+            for q_id in list(queue_list):
                 try:
-                    self._log.info("queue_id {}: {}"
-                                   .format(text(queue_id),
-                                           self.getLine(queue_id)))
+                    target_queue = self.get_queue(q_id)
+                    self._log.info("queue_id %s: %s",
+                                   text(q_id), target_queue.get_nowait())
                 except Empty:
-                    self._log.info("queue_id {} is empty"
-                                   .format(text(queue_id)))
+                    self._log.info("queue_id %s is empty", text(q_id))

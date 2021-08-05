@@ -238,8 +238,8 @@ class _Command(object):
         for pipename, pipe in list(self.pipes.items()):
             self._log.info(pipename + " is " +
                            ("empty" if
-                            pipe.isEmpty() is True else "not empty"))
-            empty = empty and pipe.isEmpty()
+                            pipe.is_empty() is True else "not empty"))
+            empty = empty and pipe.is_empty()
 
         return empty
 
@@ -441,8 +441,8 @@ class _Command(object):
         """Force one line of output each from attached pipes
 
         Used for debugging issues that might relate to data stuck in the
-        queues. Triggers the pipes' destructiveAudit function which prints
+        queues. Triggers the pipes' destructive_audit function which prints
         the last line of the queue or an 'empty' message.
         """
         for pipe in list(self.pipes.values()):
-            pipe.destructiveAudit()
+            pipe.destructive_audit()
