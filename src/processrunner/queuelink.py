@@ -348,7 +348,7 @@ class QueueLink(object):
     def stop_publishers(self):
         """Stop current publisher processes"""
         self._log.debug("Stopping any current publishers")
-        for source_id in self.client_queues_source.keys():
+        for source_id in self.client_queues_source:
             self.stop_publisher(source_id)
 
     @validate_direction
@@ -389,7 +389,7 @@ class QueueLink(object):
                 self.stop_publishers()
 
                 # Restart publishers with the updated destinations
-                for source_id in self.client_queues_source.keys():
+                for source_id in self.client_queues_source:
                     self.start_publisher(source_id)
 
         return text(queue_id)
@@ -418,7 +418,7 @@ class QueueLink(object):
                     self._log.debug("First checking upstream queue(s) of %s",
                                     queue_id)
 
-                    for source_id in self.client_queues_source.keys():
+                    for source_id in self.client_queues_source:
                         source_empty = self.get_queue(source_id).empty()
                         self._log.info("Source %s is empty: %s",
                                        source_id, source_empty)
