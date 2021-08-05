@@ -1,14 +1,18 @@
-def simpleLoader(moduleName, name=None):
+# -*- coding: utf-8 -*-
+"""ProcessRunner baseline."""
+
+
+def simple_loader(module_name, name=None):
     """ Import a named object from a module in the context of this function.
     Source:
     https://www.oreilly.com/library/view/python-cookbook/0596001673/5s04.html
 
-    moduleName: Dot-notation module name; use alone if importing a package or
+    module_name: Dot-notation module name; use alone if importing a package or
     non-qualified module
-    name: Object or submodule to import from moduleName
+    name: Object or submodule to import from module_name
     """
     try:
-        module = __import__(moduleName, globals(), locals(), [name])
+        module = __import__(module_name, globals(), locals(), [name])
     except ImportError:
         return None
 
@@ -18,15 +22,15 @@ def simpleLoader(moduleName, name=None):
         return None
 
 
-def safe_list_get(inList, idx):
+def safe_list_get(in_list, idx):
     """https://stackoverflow.com/a/5125636"""
     try:
-        return inList[idx]
+        return in_list[idx]
     except IndexError:
         return None
 
 
-# [moduleName, name, asName]
+# [moduleName, name, as_name]
 import_list = [
 
     # Core modules
@@ -50,25 +54,26 @@ import_list = [
 for entry in import_list:
     # Determine the effective name of the import
     if safe_list_get(entry, 2) is not None:
-        asName = safe_list_get(entry, 2)
+        as_name = safe_list_get(entry, 2)
     elif safe_list_get(entry, 1) is None:
-        asName = safe_list_get(entry, 0)
+        as_name = safe_list_get(entry, 0)
     else:
-        asName = safe_list_get(entry, 1)
+        as_name = safe_list_get(entry, 1)
 
     # Try to import with the provided value (Python 2.7)
     if safe_list_get(entry, 1) is None:
-        importedModule = simpleLoader(entry[0])
+        imported_module = simple_loader(entry[0])
     else:
-        importedModule = simpleLoader(entry[0], entry[1])
+        imported_module = simple_loader(entry[0], entry[1])
 
     # Try with an extended path (Python 3)
-    if importedModule is None:
+    if imported_module is None:
+        # pylint: disable=invalid-name
         if safe_list_get(entry, 1) is None:
-            moduleName = "processrunner"
-            importedModule = simpleLoader(moduleName, entry[0])
+            module_str = "processrunner"
+            imported_module = simple_loader(module_str, entry[0])
         else:
-            moduleName = ".".join(["processrunner", entry[0]])
-            importedModule = simpleLoader(moduleName, entry[1])
+            module_str = ".".join(["processrunner", entry[0]])
+            imported_module = simple_loader(module_str, entry[1])
 
-    locals()[asName] = importedModule
+    locals()[as_name] = imported_module
