@@ -271,7 +271,7 @@ class ProcessRunner:
         log.info("Starting linked watcher process")
 
         # Iterate through the list of provided "output" queues
-        t = Timer(interval_ms=settings.config["NOTIFICATION_DELAY"] * 1000)
+        t = Timer(interval=settings.config["NOTIFICATION_DELAY"])
         while True:
             # Log whether we are still running
             if t.interval():

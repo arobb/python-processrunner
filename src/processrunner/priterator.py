@@ -28,12 +28,12 @@ class PrIterator(object):
     def __next__(self):
         # Let a user know if we're stuck in the loop
         # Use a timer so we don't write the notification on every iteration
-        interval_delay = settings.config["NOTIFICATION_DELAY"] * 1000
-        loop_timer = Timer(interval_ms=interval_delay)
+        interval_delay = settings.config["NOTIFICATION_DELAY"]
+        loop_timer = Timer(interval=interval_delay)
 
         # Start a timeout timer
         if self.timeout is not None:
-            timeout_timer = Timer(interval_ms=self.timeout * 1000)
+            timeout_timer = Timer(interval=self.timeout)
 
         # Wait until the list has content or we're done
         while len(self.output_list) == 0 and not self.complete():

@@ -173,15 +173,15 @@ class _Command(object):
             self._log.info("Process is running, sending SIGINT")
             self.send_signal(signal.SIGINT)
 
-        t = Timer(timeout)
+        timer = Timer(timeout)
         while self.isAlive():
             self._log.info("Waiting for process to exit")
             time.sleep(0.001)
 
             # When we've crossed the timeout, terminate the process
-            if t.interval():
-                self._log.info("Process took too long, terminating after {}"
-                               " seconds".format(timeout))
+            if timer.interval():
+                self._log.info("Process took too long, terminating after %.1f"
+                               " seconds", timeout)
                 self.terminate()
 
         # Send a shutdown request to all the pipes
@@ -326,7 +326,7 @@ class _Command(object):
 
             return alive
 
-        t = Timer(interval_ms=1000)
+        t = Timer(interval=1)
         while self.poll() is None or isAliveLocal() is True:
             if t.interval():
                 self._log.debug("Waiting patiently: poll is {}, isAliveLocal"

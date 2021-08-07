@@ -9,33 +9,49 @@ import time
 class Timer:
     """Used to help time events."""
 
-    def __init__(self, interval_ms=10000):
-        self.interval_ms = interval_ms
+    def __init__(self, interval=10):
+        """Timing events: Establish start time reference for lap and interval
+
+        ``interval`` supports resolution to microseconds. Default is 10
+        seconds.
+
+        :param float interval: Seconds between intervals
+        """
+        self.interval = interval
         self.start_time = self.now()
         self.last_interval_count = 0
 
     @staticmethod
     def now():
-        """Returns the current time in milliseconds."""
+        """Returns the current time in seconds as a float
+
+        Returned value has resolution to microseconds.
+
+        :return: float seconds
+        """
         current = time.mktime(datetime.datetime.now().timetuple()) \
             + datetime.datetime.now().microsecond / 1000000.0
-        current *= 1000
 
-        return int(current)
+        return float(current)
 
     def lap(self):
-        """Return milliseconds since this instance was created."""
+        """Return seconds since this instance was created.
+
+        :return: float"""
         return self.now() - self.start_time
 
     def interval(self):
         """Return True if we have exceeded the interval since we started or
-        last called interval()."""
+        last called interval().
+
+        :return: bool"""
 
         # Get the current lap time
-        lap = self.lap()
+        lap = int(self.lap() * 1000000)  # full resolution as an int
+        interval = int(self.interval * 1000000)
 
         # How many intervals have elapsed since this instance was created?
-        interval_count_float = lap / self.interval_ms
+        interval_count_float = lap / interval  # integer division
 
         # Round down the number of intervals to a whole number
         interval_count_floor = int(math.floor(interval_count_float))

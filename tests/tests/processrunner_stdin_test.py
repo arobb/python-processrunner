@@ -51,7 +51,7 @@ class ProcessRunnerTestCase(unittest.TestCase):
     # def test_processrunner_stdin(self):
     #     outputFile = NamedTemporaryFile()
     #     command = ['tee', outputFile.name]
-    #     t = Timer(interval_ms=1000)
+    #     t = Timer(interval=1)
     #     force_fail = False
     #
     #     try:

@@ -80,8 +80,8 @@ class ContentWrapper(object):
                 writer.write(val)
                 writer.flush()
                 lap = stopwatch.lap()
-                self._log.info("Finished writing value into buffer file in {}"
-                               " seconds".format(lap / 1000))
+                self._log.info("Finished writing value into buffer file in "
+                               "%.1f seconds", lap)
 
         # Not assigning to self.value
         else:
@@ -177,7 +177,7 @@ class ContentWrapper(object):
         stopwatch = Timer()
         content = reader.read()
         lap = stopwatch.lap()
-        self._log.info("Finished reading value into buffer file in {}"
-                       " seconds".format(lap / 1000))
+        self._log.info("Finished reading value into buffer file in %.1f "
+                       "seconds", lap)
 
         return content
