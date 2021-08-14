@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Exclusively holds the multiprocessing manager for _Command"""
 from __future__ import unicode_literals
 
 import sys
@@ -14,6 +15,8 @@ from .command import _Command
 #   into the client queues.
 class _CommandManager(BaseManager):
     def __init__(self, address=None, authkey=None):
+        # pylint: disable=bad-super-call
+        # Py3 supports super().__init__; this form is kept for backward compat
         super(type(self), self).__init__(address, authkey)
 
 

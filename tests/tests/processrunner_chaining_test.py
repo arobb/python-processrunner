@@ -1,17 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+
 import os
 import sys
-import time
 import unittest
-
-from tempfile import NamedTemporaryFile
-from codecs import getreader
 from multiprocessing import Manager
 
-from tests.tests import context
-from processrunner import ProcessRunner
 from processrunner.timer import Timer
+
+from processrunner import ProcessRunner
 
 '''
 '''
@@ -71,7 +68,7 @@ class ProcessRunnerChainingTestCase(unittest.TestCase):
         contentGeneratorProc | contentWriterProc
 
         # Starts the generator
-        inputText_list = contentGeneratorProc.collectLines()
+        inputText_list = contentGeneratorProc.collectLines(timeout=1)
 
         # Write another test to verify that we can have a long delay
         # Wait to start the writer to see if this will break anything
@@ -83,7 +80,7 @@ class ProcessRunnerChainingTestCase(unittest.TestCase):
         # Give the commands some time to execute
         # This is so complicated because tee doesn't naturally exit unless
         # stdin is closed, but we don't know when to close stdin
-        t = Timer(interval_ms=2000)
+        t = Timer(interval=2)
         while True:
             if len(inputText_list) == output_validation_queue.qsize():
                 break

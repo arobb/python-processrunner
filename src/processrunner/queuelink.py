@@ -61,11 +61,15 @@ class QueueLink(object):
     """Manages publishing from source and client queues"""
 
     def __init__(self, name=None, log_name=None):
-        """Manages the pull/push with PrPipe queues"""
+        """Manages the pull/push with PrPipe queues
+
+        :param str name: Appended to class name in log records (``cl.name``)
+        :param str log_name: Appended to class name.name (``cl.name.log_name``)
+            or just class name if ``name`` is not provided
+        """
         # pylint: disable=C0103
         self.id = \
-            ''.join([random.choice('0123456789ABCDEF')
-                     for x in range(6)])
+            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
         # pylint: enable=C0103
 
         self.name = name

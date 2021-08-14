@@ -278,7 +278,7 @@ class ProcessRunner:
                 log.debug("Linked watcher process still running")
 
             # Check if the main process is still running
-            if run.isAlive():
+            if run.is_alive():
                 continue
 
             complete = True
@@ -375,19 +375,19 @@ class ProcessRunner:
         self.pipeClientProcesses['stdin'] = dict()
 
         # Activate stdin
-        self.run.enableStdin(queue=stdin_q)
+        self.run.enable_stdin(queue=stdin_q)
 
         # Mark stdin "flag" enabled
         if self.stdin is None:
             self.stdin = True
 
     def closeStdin(self):
-        """Proxy to call _Command.closeStdin"""
+        """Proxy to call _Command.close_stdin"""
         if self.stdin is None:
             return
 
         try:
-            self.run.closeStdin()
+            self.run.close_stdin()
 
         except HandleNotSet:
             self._log.debug("Trying to close stdin, but the handle was never "
@@ -434,7 +434,7 @@ class ProcessRunner:
         Returns:
             bool.
         """
-        return self.run.isQueueEmpty(procPipeName, clientId)
+        return self.run.is_queue_empty(procPipeName, clientId)
 
     def areAllQueuesEmpty(self):
         """Check that all queues are empty
@@ -446,7 +446,7 @@ class ProcessRunner:
         Returns:
             bool
         """
-        return self.run.areAllQueuesEmpty()
+        return self.run.are_all_queues_empty()
 
     def isAlive(self):
         """Check whether the Popen process reports alive
@@ -454,7 +454,7 @@ class ProcessRunner:
         Returns:
             bool
         """
-        return self.run.isAlive()
+        return self.run.is_alive()
 
     def poll(self):
         """Invoke the subprocess.Popen.poll() method
@@ -660,7 +660,7 @@ class ProcessRunner:
         """
         q = self.queueManager\
             .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
-        clientId = self.run.registerClientQueue(procPipeName, q)
+        clientId = self.run.register_client_queue(procPipeName, q)
         self.pipeClients[procPipeName][clientId] = q
 
         return clientId, q
@@ -678,7 +678,7 @@ class ProcessRunner:
         Returns:
             int
         """
-        clientId = self.run.registerClientQueue(procPipeName, queue)
+        clientId = self.run.register_client_queue(procPipeName, queue)
         self.pipeClients[procPipeName][clientId] = queue
 
         return clientId
@@ -696,7 +696,7 @@ class ProcessRunner:
         Returns:
             string. Client's queue ID that was unregistered
         """
-        self.run.unRegisterClientQueue(procPipeName, clientId)
+        self.run.unregister_client_queue(procPipeName, clientId)
 
         if text(clientId) in self.pipeClientProcesses:
             self.pipeClientProcesses.pop(text(clientId))
@@ -718,9 +718,9 @@ class ProcessRunner:
         Raises:
             Empty
         """
-        line = self.run.getLineFromPipe(procPipeName=procPipeName,
-                                        clientId=clientId,
-                                        timeout=timeout)
+        line = self.run.get_line_from_pipe(pipe_name=procPipeName,
+                                           client_id=clientId,
+                                           timeout=timeout)
         return line
 
     def destructiveAudit(self):
@@ -730,7 +730,7 @@ class ProcessRunner:
         queues.  Triggers the pipes' destructive_audit function which prints
         the last line of the queue or an 'empty' message.
         """
-        return self.run.destructiveAudit()
+        return self.run.destructive_audit()
 
     def mapLines(self, func, procPipeName):
         """Run a function against each line presented by one pipe manager
@@ -783,7 +783,7 @@ class ProcessRunner:
 
             try:
                 # Continue while there MIGHT be data to read
-                while run.isAlive() \
+                while run.is_alive() \
                         or not run.is_queue_drained(procPipeName, clientId):
                     log.debug("Trying to get line from {} for client {}"
                               .format(procPipeName, clientId))
@@ -791,7 +791,7 @@ class ProcessRunner:
                     # Continue while we KNOW THERE IS data to read
                     while True:
                         try:
-                            line = run.getLineFromPipe(procPipeName,
+                            line = run.get_line_from_pipe(procPipeName,
                                                        clientId,
                                                        timeout=0.05)
                             log.debug("Writing line to user function")
@@ -821,7 +821,7 @@ class ProcessRunner:
                 try:
                     # This will throw an EOFError when the runManager has
                     # stopped already
-                    run.unRegisterClientQueue(procPipeName, clientId)
+                    run.unregister_client_queue(procPipeName, clientId)
 
                 except EOFError:
                     log.debug("Caught EOFError while stopping doWrite for"
@@ -968,6 +968,8 @@ class ProcessRunner:
             list. List of strings that are the output lines from selected pipes
         """
         pipe_name = "output" if procPipeName is None else procPipeName
+        self._log.info("Collecting lines from %s", pipe_name)
+
         output_iter = getattr(self, pipe_name)
         output_iter.settimeout(timeout=timeout)
 

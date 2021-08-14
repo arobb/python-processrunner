@@ -24,7 +24,7 @@ result = proc.wait().poll()
 '''
 def printQsize(proc):
     q = proc.pipes['stdout'].queue
-    while proc.isAlive() or q.qsize() > 0:
+    while proc.is_alive() or q.qsize() > 0:
         print(q.qsize())
         time.sleep(0.01)
 

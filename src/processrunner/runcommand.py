@@ -37,7 +37,7 @@ def runCommand(command,
 
         returnCode = proc.wait().poll()
 
-    if returnAllContent:
+    if returnAllContent:  # pylint: disable=no-else-return
         return returnCode, content
     else:
         return returnCode

@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """Class to house time-related convenience functions."""
-
 import datetime
-import math
+import math  # pylint: disable=no-name-in-module
 import time
 
 
@@ -17,13 +16,13 @@ class Timer:
 
         :param float interval: Seconds between intervals
         """
-        self.interval = interval
+        self.interval_period = interval
         self.start_time = self.now()
         self.last_interval_count = 0
 
     @staticmethod
     def now():
-        """Returns the current time in seconds as a float
+        """Returns the current Unix epoch time in seconds as a float
 
         Returned value has resolution to microseconds.
 
@@ -48,16 +47,19 @@ class Timer:
 
         # Get the current lap time
         lap = int(self.lap() * 1000000)  # full resolution as an int
-        interval = int(self.interval * 1000000)
+        interval = int(self.interval_period * 1000000)
 
         # How many intervals have elapsed since this instance was created?
         interval_count_float = lap / interval  # integer division
 
         # Round down the number of intervals to a whole number
+        # pylint: disable=c-extension-no-member
         interval_count_floor = int(math.floor(interval_count_float))
+        # pylint: enable=c-extension-no-member
 
         # If an interval has passed since the last one was recorded,
         # return true
+        # pylint: disable=no-else-return
         if interval_count_floor > self.last_interval_count:
             self.last_interval_count = interval_count_floor
             return True

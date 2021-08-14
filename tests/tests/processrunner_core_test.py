@@ -1,24 +1,20 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
 
 import multiprocessing
 import os
 import sys
 import time
 import unittest
-
-from parameterized import parameterized
 from tempfile import NamedTemporaryFile
 
-from tests.tests import context
-from tests.tests.spinner import Spinner
+from parameterized import parameterized
+from processrunner.exceptionhandler import ProcessAlreadyStarted
 from processrunner.timer import Timer
+
 from processrunner import ProcessRunner
 from processrunner import runCommand
-from processrunner.exceptionhandler import ProcessAlreadyStarted
-from processrunner.exceptionhandler import ProcessNotStarted
-
+from tests.tests.spinner import Spinner
 
 '''
 # Watch the main queue fill and empty
@@ -34,7 +30,7 @@ result = proc.wait().poll()
 '''
 def printQsize(proc):
     q = proc.pipes['stdout'].queue
-    while proc.isAlive() or q.qsize() > 0:
+    while proc.is_alive() or q.qsize() > 0:
         print(q.qsize())
         time.sleep(0.01)
 
@@ -58,7 +54,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
     def test_processrunner_correct_stdout_count(self, autostart, manualstart):
         testLen = 1000
         command = [sys.executable, self.sampleCommandPath, "--lines", "{}".format(testLen), "--block", "1", "--sleep", "0"]
-        t = Timer(interval_ms=5000)
+        t = Timer(interval=5)
         print("Before with-as time: {}ms".format(t.lap()))
         with ProcessRunner(command, autostart=autostart) as proc:
             print("After with-as time: {}ms".format(t.lap()))

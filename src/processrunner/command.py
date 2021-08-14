@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Internal Command class that proxies all interaction with Popen"""
 from __future__ import unicode_literals
 
 import codecs
@@ -28,13 +29,15 @@ class _Command(object):
     which provides proxy access to class methods
 
     """
+    # pylint: disable=R0913
+    # TODO: Consider managing optional arguments differently to reduce count
     def __init__(self,
                  command,
                  cwd=None,
                  autostart=True,
                  std_queues=None,
                  log_name=None,
-                 global_config={}):
+                 global_config=None):
         """
         Args:
             command (list): List of strings to pass to subprocess.Popen
@@ -45,18 +48,24 @@ class _Command(object):
             stdin (pipe): File-like object to read from
         """
         # Unique ID
+        # pylint: disable=C0103
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+        # pylint: enable=C0103
 
         settings.init()
-        settings.config = global_config
+        if global_config is None:
+            settings.config = {}
+        else:
+            settings.config = global_config
 
-        self._initializeLogging()
+        self._log = None
+        self._initialize_logging()
 
         # Identify this Command on the log feed
         self.log_name = log_name
         if self.log_name is not None:
-            self._log.info("log_name is {}".format(self.log_name))
+            self._log.info("log_name is %s", self.log_name)
 
         self.started = False
         self.command = command
@@ -74,22 +83,23 @@ class _Command(object):
         # Only create the stdin pipe entry if we've been asked to set up stdin
         self.stdin_handle = None
         if "stdin" in std_queues:
-            self.enableStdin(queue=std_queues['stdin'])
+            self.enable_stdin(queue=std_queues['stdin'])
 
         # Start running if we would like
         if autostart:
             self.start()
 
-    def _initializeLogging(self):
+    def _initialize_logging(self):
         if hasattr(self, '_log'):
             if self._log is not None:
                 return
 
         # Logging
         self._log = logging.getLogger("{}-{}".format(__name__, self.id))
-        self.addLoggingHandler(logging.NullHandler())
+        self.add_logging_handler(logging.NullHandler())
 
-    def addLoggingHandler(self, handler):
+    def add_logging_handler(self, handler):
+        """Add a logging handler to the logger"""
         self._log.addHandler(handler)
 
     def get(self, parameter):
@@ -107,7 +117,7 @@ class _Command(object):
         """
         return getattr(self, parameter)
 
-    def getCommand(self):
+    def get_command(self):
         """Retrieve the command that Popen is running
 
         Returns:
@@ -115,7 +125,7 @@ class _Command(object):
         """
         return self.command
 
-    def enableStdin(self, queue):
+    def enable_stdin(self, queue):
         """Enable the stdin pipe"""
         self.pipes['stdin'] = _PrPipeWriter(queue=queue,
                                             name="stdin",
@@ -123,7 +133,7 @@ class _Command(object):
 
     def start(self):
         """Begin running the target process"""
-        if self.started:
+        if self.started:  # pylint: disable=no-else-raise
             message = "_Command.start called after process has started"
             self._log.info(message)
             raise ProcessAlreadyStarted(message)
@@ -135,30 +145,32 @@ class _Command(object):
         # 1. stdout and stderr are captured via pipes
         # 2. Output from stdout and stderr buffered per line
         # 3. File handles are closed automatically when the process exits
-        ON_POSIX = settings.config["ON_POSIX"]
-        popenKwargs = {
+        on_posix = settings.config["ON_POSIX"]
+        popen_kwargs = {
             "stdout": PIPE,
             "stderr": PIPE,
             "universal_newlines": False,
-            "close_fds": ON_POSIX,
+            "close_fds": on_posix,
             "cwd": self.cwd
         }
 
         if "stdin" in self.pipes:
             self.stdin_handle = PIPE
-            popenKwargs['stdin'] = self.stdin_handle
+            popen_kwargs['stdin'] = self.stdin_handle
 
-        self.proc = Popen(self.command, **popenKwargs)
+        # pylint: disable=consider-using-with
+        self.proc = Popen(self.command, **popen_kwargs)
+        # pylint: enable=consider-using-with
 
         # Init readers to transfer output from the Popen pipes to local queues
-        wrappedStdout = codecs.getreader("utf-8")(self.proc.stdout)
-        wrappedStderr = codecs.getreader("utf-8")(self.proc.stderr)
-        self.pipes["stdout"].setPipeHandle(wrappedStdout)
-        self.pipes["stderr"].setPipeHandle(wrappedStderr)
+        wrapped_stdout = codecs.getreader("utf-8")(self.proc.stdout)
+        wrapped_stderr = codecs.getreader("utf-8")(self.proc.stderr)
+        self.pipes["stdout"].setPipeHandle(wrapped_stdout)
+        self.pipes["stderr"].setPipeHandle(wrapped_stderr)
 
         if "stdin" in self.pipes:
-            wrappedStdin = getwriter("utf-8")(self.proc.stdin)
-            self.pipes["stdin"].setPipeHandle(wrappedStdin)
+            wrapped_stdin = getwriter("utf-8")(self.proc.stdin)
+            self.pipes["stdin"].setPipeHandle(wrapped_stdin)
 
         return self.started
 
@@ -169,12 +181,12 @@ class _Command(object):
                                   seconds
         """
         # Send a SIGINT to the process
-        if self.isAlive():
+        if self.is_alive():
             self._log.info("Process is running, sending SIGINT")
             self.send_signal(signal.SIGINT)
 
         timer = Timer(timeout)
-        while self.isAlive():
+        while self.is_alive():
             self._log.info("Waiting for process to exit")
             time.sleep(0.001)
 
@@ -186,48 +198,45 @@ class _Command(object):
 
         # Send a shutdown request to all the pipes
         for pipe_name, pipe in self.pipes.items():
-            self._log.debug("Stopping pipe manager for {}".format(pipe_name))
+            self._log.debug("Stopping pipe manager for %s", pipe_name)
             pipe.stop()
 
     def send_signal(self, signal_value):
         """Send a signal to the process"""
         return self.proc.send_signal(signal_value)
 
-    def getPipe(self, procPipeName):
+    def get_pipe(self, pipe_name):
         """Retrieve a _PrPipe manager instance by pipe name
 
-        Args:
-            procPipeName (string): One of "stdout" or "stderr"
+        :param string pipe_name: One of "stdout" or "stderr"
 
-        Returns:
-            _PrPipe[Reader|Writer]
+        :return: _PrPipe[Reader|Writer]
 
-        Raises:
-            KeyError
+        :raises: KeyError
         """
-        if procPipeName not in self.pipes:
-            raise KeyError(procPipeName+" is not an available pipe")
+        if pipe_name not in self.pipes:
+            raise KeyError(pipe_name + " is not an available pipe")
 
-        return self.pipes[procPipeName]
+        return self.pipes[pipe_name]
 
-    def isQueueEmpty(self, procPipeName, clientId):
+    def is_queue_empty(self, pipe_name, client_id):
         """Check whether the _PrPipe* queues report empty for a given pipe
         and client
 
         Args:
-            clientId (string): ID of the client queue
-            procPipeName (string): One of "stdout" or  "stderr"
+            client_id (string): ID of the client queue
+            pipe_name (string): One of "stdout" or  "stderr"
 
         Returns:
             bool
         """
-        return self.getPipe(procPipeName).isEmpty(clientId)
+        return self.get_pipe(pipe_name).isEmpty(client_id)
 
-    def areAllQueuesEmpty(self):
+    def are_all_queues_empty(self):
         """Check that all queues are empty
 
         A bit dangerous to use, will block if any client has stopped pulling
-        from their queue. Better to use isQueueEmpty() for the dedicated
+        from their queue. Better to use is_queue_empty() for the dedicated
         client queue. Sometimes (especially externally) that's not possible.
 
         Returns:
@@ -241,30 +250,43 @@ class _Command(object):
                             pipe.is_empty() is True else "not empty"))
             empty = empty and pipe.is_empty()
 
+            # empty_pipe = pipe.is_empty()
+            # empty_pipe_str = "empty" if empty_pipe else "not empty"
+            # self._log.info("%s is %s", pipename, empty_pipe_str)
+            #
+            # empty = empty and empty_pipe
+
         return empty
 
-    def is_queue_alive(self, procPipeName):
+    def is_queue_alive(self, pipe_name):
         """Check if a queue is still running
 
-        :arg string procPipeName: One of "stdout" or  "stderr"
+        :arg string pipe_name: One of "stdout" or  "stderr"
         :return bool
         """
-        return self.getPipe(procPipeName).is_alive()
+        return self.get_pipe(pipe_name).is_alive()
 
-    def is_queue_drained(self, procPipeName, clientId=None):
+    def is_queue_drained(self, pipe_name, client_id=None):
         """Check if a queue could contain data
 
-        :arg string procPipeName: One of "stdout" or  "stderr"
+        :param string pipe_name: One of "stdout" or  "stderr"
+        :param int client_id: Identifier of a client
         :return bool
         """
-        return self.getPipe(procPipeName).is_drained(clientId=clientId)
+        return self.get_pipe(pipe_name).is_drained(clientId=client_id)
 
-    def isAlive(self):
+    def is_alive(self):
         """Check whether the Popen process reports alive
 
         Returns:
             bool
         """
+        # try:
+        #     state = bool(self.proc.poll())  # None is False
+        #
+        # except AttributeError:  # Proc may not be available yet
+        #     state = False
+
         if self.proc is None:
             state = False
         else:
@@ -278,7 +300,7 @@ class _Command(object):
         Returns:
             NoneType, int. NoneType if alive, or int with exit code if dead
         """
-        if self.proc is None:
+        if self.proc is None:  # pylint: disable=no-else-raise
             raise ProcessNotStarted("_Command.poll called before process "
                                     "started")
         else:
@@ -290,35 +312,32 @@ class _Command(object):
         Does some extra checking to make sure the pipe managers have finished
         reading
 
-        Args:
-            requirePublishLock (bool): True to require a lock during the wait()
-                loop. Can cause a deadlock if used with an outside call to
-                publish(requireLock=True)
+        :param float timeout: Timeout in seconds
 
-            timeout (float): Timeout in seconds
-
-        Returns:
-            None
+        :returns: None
         """
         if timeout is not None:
-            timeout_obj = Timer(timeout * 1000)
+            timeout_obj = Timer(timeout)
 
-        def isAliveLocal():
+        def is_alive_local():
+            """Checks whether output pipes are finished
+
+            :return: bool
+            """
             # Force down any unprocessed messages
-            # self.publish(requirePublishLock)
             alive = False
 
             # Iterate through the list of pipes
-            for pipeName in list(self.pipes.keys()):
-                pipe = self.getPipe(pipeName)
+            for pipe_name in list(self.pipes.keys()):
+                pipe = self.get_pipe(pipe_name)
 
                 # Skip writers
-                if type(pipe) == _PrPipeWriter:
+                if isinstance(pipe, _PrPipeWriter):
                     continue
 
                 pipe_alive = pipe.is_alive()
-                self._log.debug("Pipe {} is_alive is {}"
-                                .format(pipeName, pipe_alive))
+                self._log.debug("Pipe %s is_alive is %s",
+                                pipe_name, pipe_alive)
 
                 # Check if the pipe is alive
                 # Any pipe alive will cause us to return True
@@ -326,11 +345,11 @@ class _Command(object):
 
             return alive
 
-        t = Timer(interval=1)
-        while self.poll() is None or isAliveLocal() is True:
-            if t.interval():
-                self._log.debug("Waiting patiently: poll is {}, isAliveLocal"
-                                " is {}".format(self.poll(), isAliveLocal()))
+        timer = Timer(interval=1)
+        while self.poll() is None or is_alive_local() is True:
+            if timer.interval():
+                self._log.debug("Waiting patiently: poll is %s, is_alive_local"
+                                " is %s", self.poll(), is_alive_local())
 
             # If we've reached the timeout, exit
             if timeout is not None:
@@ -341,8 +360,6 @@ class _Command(object):
                     raise Timeout(message)
 
             time.sleep(0.01)
-
-        return None
 
     def terminate(self):
         """Proxy call for Popen.terminate
@@ -364,15 +381,16 @@ class _Command(object):
         """
         return self.proc.kill()
 
-    def closeStdin(self):
+    def close_stdin(self):
+        """Flush and close the stdin pipe"""
         if self.proc.stdin.closed:
-            self._log.debug("closeStdin called, but the stdin pipe"
+            self._log.debug("close_stdin called, but the stdin pipe"
                             " isn't available")
             return False
 
-        """Close the stdin _PrPipeWriter by stopping the _PrPipe"""
+        # Close the stdin _PrPipeWriter by stopping the _PrPipe
         try:
-            stdin = self.getPipe("stdin")
+            stdin = self.get_pipe("stdin")
             stdin.stop()
 
         # Stdin isn't available
@@ -385,45 +403,40 @@ class _Command(object):
 
         return True
 
-    def registerClientQueue(self, procPipeName, queueProxy):
+    def register_client_queue(self, pipe_name, queue_proxy):
         """Register to get a client queue on a pipe manager
 
         The ID for the queue is returned from the method as a string
 
         Args:
-            procPipeName (string): One of "stdout" or "stderr"
-            queueProxy (queueProxy): Proxy object to a Queue we should populate
+            pipe_name (string): One of "stdout" or "stderr"
+            queue_proxy (queueProxy): Proxy object to a Queue we should populate
 
         Returns:
-            string Client queue ID, unique only when combined with procPipeName
+            string Client queue ID, unique only when combined with pipe_name
 
         """
-        return self.getPipe(procPipeName).registerClientQueue(queueProxy)
+        return self.get_pipe(pipe_name).registerClientQueue(queue_proxy)
 
-    def unRegisterClientQueue(self, procPipeName, clientId):
+    def unregister_client_queue(self, pipe_name, client_id):
         """Unregister a client queue from a pipe manager
 
         Prevents other clients from waiting on queues that will never be read
 
         Args:
-            procPipeName (string): One of "stdout" or "stderr"
-            clientId (string): ID of the client queue on this pipe manager
-
-        Returns:
-            None
+            pipe_name (string): One of "stdout" or "stderr"
+            client_id (string): ID of the client queue on this pipe manager
         """
-        self.getPipe(procPipeName).unRegisterClientQueue(clientId)
+        self.get_pipe(pipe_name).unRegisterClientQueue(client_id)
 
-        return None
-
-    def getLineFromPipe(self, procPipeName, clientId, timeout=-1):
+    def get_line_from_pipe(self, pipe_name, client_id, timeout=-1):
         """Retrieve a line from a pipe manager
 
         Throws Empty if no lines are available.
 
         Args:
-            procPipeName (string): One of "stdout" or "stderr"
-            clientId (string): ID of the client queue on this pipe manager
+            pipe_name (string): One of "stdout" or "stderr"
+            client_id (string): ID of the client queue on this pipe manager
             timeout (float): <0 for get_nowait behavior, otherwise use
                            get(timeout=timeout); in seconds; default -1
 
@@ -433,11 +446,11 @@ class _Command(object):
         Raises:
             Empty
         """
-        line = self.getPipe(procPipeName).getLine(clientId=clientId,
-                                                  timeout=timeout)
+        line = self.get_pipe(pipe_name).getLine(clientId=client_id,
+                                                timeout=timeout)
         return line
 
-    def destructiveAudit(self):
+    def destructive_audit(self):
         """Force one line of output each from attached pipes
 
         Used for debugging issues that might relate to data stuck in the
@@ -445,4 +458,4 @@ class _Command(object):
         the last line of the queue or an 'empty' message.
         """
         for pipe in list(self.pipes.values()):
-            pipe.destructive_audit()
+            pipe.destructiveAudit()

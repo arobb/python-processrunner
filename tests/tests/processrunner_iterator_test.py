@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from builtins import str as text
 
 import os
 import sys
 import time
 import unittest
 
-from tests.tests import context
 from processrunner import ProcessRunner
 
 '''
@@ -24,7 +22,7 @@ result = proc.wait().poll()
 '''
 def printQsize(proc):
     q = proc.pipes['stdout'].queue
-    while proc.isAlive() or q.qsize() > 0:
+    while proc.is_alive() or q.qsize() > 0:
         print(q.qsize())
         time.sleep(0.01)
 
