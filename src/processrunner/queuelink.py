@@ -67,10 +67,8 @@ class QueueLink(object):
         :param str log_name: Appended to class name.name (``cl.name.log_name``)
             or just class name if ``name`` is not provided
         """
-        # pylint: disable=C0103
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
-        # pylint: enable=C0103
 
         self.name = name
         self.log_name = log_name

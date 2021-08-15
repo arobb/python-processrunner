@@ -35,9 +35,9 @@ def runCommand(command,
             proc.mapLines(writeOut(sys.stderr, outputPrefix=outputPrefix),
                           procPipeName="stderr")
 
-        returnCode = proc.wait().poll()
+        return_code = proc.wait().poll()
 
     if returnAllContent:  # pylint: disable=no-else-return
-        return returnCode, content
+        return return_code, content
     else:
-        return returnCode
+        return return_code

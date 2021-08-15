@@ -48,10 +48,8 @@ class _Command(object):
             stdin (pipe): File-like object to read from
         """
         # Unique ID
-        # pylint: disable=C0103
         self.id = \
             ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
-        # pylint: enable=C0103
 
         settings.init()
         if global_config is None:
@@ -245,9 +243,10 @@ class _Command(object):
         empty = True
 
         for pipename, pipe in list(self.pipes.items()):
-            self._log.info(pipename + " is " +
-                           ("empty" if
-                            pipe.is_empty() is True else "not empty"))
+            log_str = "{} is {}".format(pipename,
+                                        ("empty" if pipe.is_empty()
+                                         else "not empty"))
+            self._log.info(log_str)
             empty = empty and pipe.is_empty()
 
             # empty_pipe = pipe.is_empty()
@@ -290,6 +289,8 @@ class _Command(object):
         if self.proc is None:
             state = False
         else:
+            # pylint: disable=R1719
+            # This statement doesn't decompose to a simple "test"
             state = True if self.proc.poll() is None else False
 
         return state

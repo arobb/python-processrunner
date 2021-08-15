@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Iterate over list proxies from ProcessRunner"""
 import logging
 import random
 import time
@@ -18,9 +19,10 @@ class PrIterator(object):
 
         self.output_list = output_list
         self.events_dict = events_dict
-        self.settimeout(timeout)
+        self.timeout = timeout
 
-        self._initializeLogging()
+        self._log = None
+        self._initialize_logging()
 
     def __iter__(self):
         return self
@@ -59,10 +61,9 @@ class PrIterator(object):
         # We have content
         return self.output_list.pop(0)
 
-    def _initializeLogging(self):
-        if hasattr(self, '_log'):
-            if self._log is not None:
-                return
+    def _initialize_logging(self):
+        if self._log is not None:
+            return
 
         # Logger name
         log_name = "{}-{}".format(__name__, self.id)
@@ -72,9 +73,9 @@ class PrIterator(object):
 
         # Logging
         self._log = logging.getLogger(log_name)
-        self.addLoggingHandler(logging.NullHandler())
+        self.add_logging_handler(logging.NullHandler())
 
-    def addLoggingHandler(self, handler):
+    def add_logging_handler(self, handler):
         """Pass-through for Logging's addHandler method"""
         self._log.addHandler(handler)
 
@@ -83,10 +84,10 @@ class PrIterator(object):
         complete = True
 
         for name, event in self.events_dict.items():
-            self._log.debug("Checking if {} client has finished".format(name))
+            self._log.debug("Checking if %s client has finished", name)
             complete = complete and event.is_set()
 
-        self._log.debug("Process complete status: {}".format(complete))
+        self._log.debug("Process complete status: %s", complete)
 
         return complete
 
