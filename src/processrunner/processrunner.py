@@ -84,8 +84,10 @@ class ProcessRunner(PRTemplate):
             log_name (string): Additional label to use in log records
         """
         # Unique ID
+        # Not used for cryptographic purposes, so excluding from Bandit
         self.id = \
-            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+            ''.join([random.choice(  # nosec
+                '0123456789ABCDEF') for x in range(6)])
 
         self.log_name = log_name
         self._initialize_logging_with_log_name(__name__)

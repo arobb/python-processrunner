@@ -6,8 +6,8 @@ import codecs
 import random
 import signal
 import time
-from subprocess import PIPE
-from subprocess import Popen
+from subprocess import PIPE  # nosec
+from subprocess import Popen  # nosec
 
 from . import settings
 from .classtemplate import PRTemplate
@@ -47,8 +47,10 @@ class _Command(PRTemplate):
             stdin (pipe): File-like object to read from
         """
         # Unique ID
+        # Not used for cryptographic purposes, so excluding from Bandit
         self.id = \
-            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+            ''.join([random.choice(  # nosec
+                '0123456789ABCDEF') for x in range(6)])
 
         settings.init()
         if global_config is None:

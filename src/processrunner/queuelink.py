@@ -68,8 +68,11 @@ class QueueLink(PRTemplate):
         :param str log_name: Appended to class name.name (``cl.name.log_name``)
             or just class name if ``name`` is not provided
         """
+        # Unique ID
+        # Not used for cryptographic purposes, so excluding from Bandit
         self.id = \
-            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+            ''.join([random.choice(  # nosec
+                '0123456789ABCDEF') for x in range(6)])
 
         self.name = name
         self.log_name = log_name

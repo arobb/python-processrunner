@@ -13,8 +13,11 @@ class PrIterator(PRTemplate):
     """Iterate over list proxies from ProcessRunner"""
     def __init__(self, output_list, events_dict, timeout=None, log_name=None):
         # Unique ID
+        # Not used for cryptographic purposes, so excluding from Bandit
         self.id = \
-            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+            ''.join([random.choice(  # nosec
+                '0123456789ABCDEF') for x in range(6)])
+
         self.log_name = log_name
 
         self.output_list = output_list

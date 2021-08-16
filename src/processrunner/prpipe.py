@@ -36,8 +36,10 @@ class _PrPipe(PRTemplate):
         """
 
         # Unique ID for this PrPipe
+        # Not used for cryptographic purposes, so excluding from Bandit
         self.id = \
-            ''.join([random.choice('0123456789ABCDEF') for x in range(6)])
+            ''.join([random.choice(  # nosec
+                '0123456789ABCDEF') for x in range(6)])
 
         # Name for this instance, typically stdin/stdout/stderr
         self.name = name
