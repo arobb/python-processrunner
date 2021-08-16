@@ -46,7 +46,7 @@ import_list = [
     ["exceptionhandler", "SIGINTException"],
     ["exceptionhandler", "CommandNotFound"],
 
-    # Deprecated as of 2.3, removed in 3.0
+    # Middle column deprecated as of 2.3, removed in 3.0
     ["writeout", "writeOut", "WriteOut"],
     ["writeout", "runCommand", "RunCommand"]
 ]
