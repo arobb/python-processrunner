@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+
 import math
 import unittest
 
-from kitchen.text.converters import to_bytes, to_unicode
-
-from tests.tests import context
+from kitchen.text.converters import to_bytes
 from processrunner.contentwrapper import ContentWrapper
+from processrunner.contentwrapper import TYPES
 
 '''
 '''
@@ -53,7 +53,7 @@ class ProcessRunnerContentWrapperTestCase(unittest.TestCase):
         content = self.contentUnderThreshold
         cw = ContentWrapper(content)
         expectedType = "DIRECT"
-        actualType = ContentWrapper.TYPES.reverse_mapping[cw.type]
+        actualType = TYPES(cw.type).name
 
         self.assertEqual(expectedType,
                          actualType,
@@ -91,7 +91,7 @@ class ProcessRunnerContentWrapperTestCase(unittest.TestCase):
         content = self.contentOverThreshold
         cw = ContentWrapper(content)
         expectedType = "FILE"
-        actualType = ContentWrapper.TYPES.reverse_mapping[cw.type]
+        actualType = TYPES(cw.type).name
 
         self.assertEqual(expectedType,
                          actualType,

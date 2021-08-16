@@ -2,23 +2,23 @@
 """Parent class for _PrPipeReader and _PrPipeWriter"""
 from __future__ import unicode_literals
 
-import logging
 import random
+import sys
 from multiprocessing import Event
 from multiprocessing import Lock
 
-try:  # Python 2.7
-    from Queue import Empty
+from .classtemplate import PRTemplate
+from .exceptionhandler import HandleAlreadySet
+from .queuelink import QueueLink
+
+if sys.version_info[0] == 2:
     from multiprocessing import Process
-except ImportError:  # Python 3.x
-    from queue import Empty
+elif sys.version_info[0] == 3:
     import multiprocessing
     Process = multiprocessing.get_context("fork").Process
 
-from .queuelink import QueueLink
-from .exceptionhandler import HandleAlreadySet
 
-class _PrPipe(object):
+class _PrPipe(PRTemplate):
     def __init__(self,
                  queue,
                  subclass_name,
@@ -28,10 +28,11 @@ class _PrPipe(object):
                  log_name=None):
         """PrPipe abstract implementation
 
-        :argument string queue_direction: Indicate direction relative to pipe;
-            e.g. for PrPipeReader from stdout, the flow is (PIPE => QUEUE) =>
-             CLIENT QUEUES (from pipe/queue into client queues), and therefore
-             queue_direction would be "source".
+        Args:
+             queue_direction (string): Indicate direction relative to pipe;
+                e.g. for PrPipeReader from stdout, the flow is (PIPE => QUEUE)
+                => CLIENT QUEUES (from pipe/queue into client queues), and
+                therefore queue_direction would be "source".
         """
 
         # Unique ID for this PrPipe
@@ -48,7 +49,7 @@ class _PrPipe(object):
         self.log_name = log_name
 
         # Initialize the logger
-        self._initializeLogging()
+        self._initialize_logging_with_log_name(self.subclass_name)
 
         # Which "direction" client queues will use in the queue_link
         self.queue_direction = queue_direction
@@ -79,14 +80,10 @@ class _PrPipe(object):
         # Lock to notify readers/writers that a read/write is in progress
         self.queue_lock = Lock()
 
-        # Keep track of the last client ID we used. Monotonically increasing
-        # across all queues related to this PrPipe.
-        self.lastClientId = 0
-
         self.process = None
-        self.pipeHandle = None
+        self.pipe_handle = None
         if pipe_handle is not None:
-            self.setPipeHandle(pipe_handle)
+            self.set_pipe_handle(pipe_handle)
 
     # Class contains Locks and Queues which cannot be pickled
     def __getstate__(self):
@@ -97,32 +94,12 @@ class _PrPipe(object):
         """
         raise Exception("Don't pickle me!")
 
-    def _initializeLogging(self):
-        if hasattr(self, '_log'):
-            if self._log is not None:
-                return
-
-        # Make a helpful log name
-        log_name = "{}-{}".format(self.subclass_name, self.id)
-
-        if self.log_name is not None:
-            log_name = "{}.{}".format(log_name, self.log_name)
-
-        if self.name is None:
-            log_name = "{}.{}".format(log_name, self.name)
-
-        # Logging
-        self._log = logging.getLogger(log_name)
-        self.addLoggingHandler(logging.NullHandler())
-
-    def addLoggingHandler(self, handler):
-        self._log.addHandler(handler)
-
-    def setPipeHandle(self, pipeHandle):
+    def set_pipe_handle(self, pipe_handle):
         """Set the pipe handle to use
 
         Args:
-            pipeHandle (pipe): An open pipe (subclasses of file, IO.IOBase)
+            pipe_handle (io.IOBase): An open pipe (subclasses of file,
+                IO.IOBase)
 
         Raises:
             HandleAlreadySet
@@ -131,7 +108,7 @@ class _PrPipe(object):
             raise HandleAlreadySet
 
         # Store the pipehandle
-        self.pipeHandle = pipeHandle
+        self.pipe_handle = pipe_handle
 
         # Process name
         process_name = "{}-{}".format(self.subclass_name, self.name)
@@ -139,20 +116,20 @@ class _PrPipe(object):
         if self.log_name is not None:
             process_name = "{}-{}".format(process_name, self.log_name)
 
-        self._log.debug("Setting {} adapter process for {} pipe handle"
-                        .format(self.subclass_name, self.name))
+        self._log.debug("Setting %s adapter process for %s pipe handle",
+                        self.subclass_name, self.name)
         self.process = Process(target=self.queue_pipe_adapter,
                                name=process_name,
                                kwargs={"pipe_name": self.name,
-                                       "pipe_handle": pipeHandle,
+                                       "pipe_handle": pipe_handle,
                                        "queue": self.queue,
                                        "queue_lock": self.queue_lock,
                                        "stop_event": self.stop_event})
         self.process.daemon = True
         self.process.start()
         self.started.set()
-        self._log.debug("Kicked off {} adapter process for {} pipe handle"
-                        .format(self.subclass_name, self.name))
+        self._log.debug("Kicked off %s adapter process for %s pipe handle",
+                        self.subclass_name, self.name)
 
     @staticmethod
     def queue_pipe_adapter(pipe_name,
@@ -161,18 +138,17 @@ class _PrPipe(object):
                            queue_lock,
                            stop_event):
         """Override me in a subclass to do something useful"""
-        pass
 
-    def getQueue(self, clientId):
+    def get_queue(self, client_id):
         """Retrieve a client's Queue proxy object
 
         Args:
-            clientId (string): ID of the client
+            client_id (string): ID of the client
 
         Returns:
-            QueueProxy
+            multiprocessing.JoinableQueue:
         """
-        return self.queue_link.get_queue(clientId)
+        return self.queue_link.get_queue(client_id)
 
     def stop(self):
         """Stop the adapter and queue link.
@@ -195,7 +171,7 @@ class _PrPipe(object):
         # Stop the queue link
         self.queue_link.stop()
 
-    def isEmpty(self, clientId=None):
+    def is_empty(self, client_id=None):
         """Checks whether the primary Queue or any clients' Queues are empty
 
         Returns True ONLY if ALL queues are empty if clientId is None
@@ -203,24 +179,24 @@ class _PrPipe(object):
             empty when clientId is provided
 
         Args:
-            clientId (string): ID of the client
+            client_id (string): ID of the client
 
         Returns:
             bool
         """
         with self.queue_lock:
-            if clientId is not None:
+            if client_id is not None:
                 empty = self.queue.empty() \
-                        and self.queue_link.is_empty(clientId)
+                        and self.queue_link.is_empty(client_id)
 
-                self._log.debug("Reporting pipe empty for client {}: {}"
-                                .format(clientId, empty))
+                self._log.debug("Reporting pipe empty for client %s: %s",
+                                client_id, empty)
 
             else:
                 empty = self.queue.empty() \
                         and self.queue_link.is_empty()
 
-                self._log.debug("Reporting pipe empty: {}".format(empty))
+                self._log.debug("Reporting pipe empty: %s", empty)
 
             return empty
 
@@ -233,13 +209,18 @@ class _PrPipe(object):
         """
         return self.process.is_alive()
 
-    def is_drained(self, clientId=None):
+    def is_drained(self, client_id=None):
         """Check alive and empty
 
         Attempts clean semantic response to "is there, or will there be, data
         to read?"
 
-        :returns bool"""
+        Args:
+            client_id (string): Registration ID to check
+
+        Returns:
+            bool: True if fully drained, False if not
+        """
         drained = True
 
         # If we aren't started, we have to stop here. The process isn't ready
@@ -251,21 +232,43 @@ class _PrPipe(object):
         drained = drained and not self.is_alive()
 
         # Checks a similar function on the queue_link
-        drained = drained and self.queue_link.is_drained(queue_id=clientId)
+        drained = drained and self.queue_link.is_drained(queue_id=client_id)
 
         # Not checking self.is_empty because that is effectively done by
         # running self.queue_link.is_drained()
 
         return drained
 
-    def registerClientQueue(self, queueProxy):
-        return self.queue_link.register_queue(queue_proxy=queueProxy,
+    def register_client_queue(self, queue_proxy):
+        """Register an existing Queue proxy to obtain data from this pipe
+
+        Args:
+            queue_proxy (multiprocessing.JoinableQueue): Proxy reference to a
+                JoinableQueue
+
+        Returns:
+            string: An integer Client ID, usually string encoded.
+        """
+        return self.queue_link.register_queue(queue_proxy=queue_proxy,
                                               direction=self.client_direction)
 
-    def unRegisterClientQueue(self, clientId):
-        return self.queue_link.unregister_queue(queue_id=clientId,
+    def unregister_client_queue(self, client_id):
+        """Remove a registration to stop content being added to a Queue
+
+        Args:
+            client_id (string): Registration ID to unlink
+
+        Returns:
+            None
+        """
+        return self.queue_link.unregister_queue(queue_id=client_id,
                                                 direction=self.client_direction)
 
-    def destructiveAudit(self):
+    def destructive_audit(self):
+        """Remove a line from each attached queue and print it
+
+        Returns:
+            None
+        """
         return self.queue_link.destructive_audit(direction=
                                                 self.client_direction)

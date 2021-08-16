@@ -3,7 +3,6 @@
 from __future__ import unicode_literals
 
 import codecs
-import logging
 import random
 import signal
 import time
@@ -11,6 +10,7 @@ from subprocess import PIPE
 from subprocess import Popen
 
 from . import settings
+from .classtemplate import PRTemplate
 from .exceptionhandler import ProcessAlreadyStarted
 from .exceptionhandler import ProcessNotStarted
 from .exceptionhandler import Timeout
@@ -21,7 +21,7 @@ from .timer import Timer
 
 
 # Private class only intended to be used by ProcessRunner
-class _Command(object):
+class _Command(PRTemplate):
     """Custom wrapper for Popen that manages the interaction with Popen and any
     client objects that have requested output
 
@@ -29,7 +29,6 @@ class _Command(object):
     which provides proxy access to class methods
 
     """
-    # pylint: disable=R0913
     # TODO: Consider managing optional arguments differently to reduce count
     def __init__(self,
                  command,
@@ -57,8 +56,7 @@ class _Command(object):
         else:
             settings.config = global_config
 
-        self._log = None
-        self._initialize_logging()
+        self._initialize_logging_with_id(__name__)
 
         # Identify this Command on the log feed
         self.log_name = log_name
@@ -86,19 +84,6 @@ class _Command(object):
         # Start running if we would like
         if autostart:
             self.start()
-
-    def _initialize_logging(self):
-        if hasattr(self, '_log'):
-            if self._log is not None:
-                return
-
-        # Logging
-        self._log = logging.getLogger("{}-{}".format(__name__, self.id))
-        self.add_logging_handler(logging.NullHandler())
-
-    def add_logging_handler(self, handler):
-        """Add a logging handler to the logger"""
-        self._log.addHandler(handler)
 
     def get(self, parameter):
         """Retrieve the value of a local parameter
@@ -163,12 +148,12 @@ class _Command(object):
         # Init readers to transfer output from the Popen pipes to local queues
         wrapped_stdout = codecs.getreader("utf-8")(self.proc.stdout)
         wrapped_stderr = codecs.getreader("utf-8")(self.proc.stderr)
-        self.pipes["stdout"].setPipeHandle(wrapped_stdout)
-        self.pipes["stderr"].setPipeHandle(wrapped_stderr)
+        self.pipes["stdout"].set_pipe_handle(wrapped_stdout)
+        self.pipes["stderr"].set_pipe_handle(wrapped_stderr)
 
         if "stdin" in self.pipes:
             wrapped_stdin = getwriter("utf-8")(self.proc.stdin)
-            self.pipes["stdin"].setPipeHandle(wrapped_stdin)
+            self.pipes["stdin"].set_pipe_handle(wrapped_stdin)
 
         return self.started
 
@@ -228,7 +213,7 @@ class _Command(object):
         Returns:
             bool
         """
-        return self.get_pipe(pipe_name).isEmpty(client_id)
+        return self.get_pipe(pipe_name).is_empty(client_id)
 
     def are_all_queues_empty(self):
         """Check that all queues are empty
@@ -272,7 +257,7 @@ class _Command(object):
         :param int client_id: Identifier of a client
         :return bool
         """
-        return self.get_pipe(pipe_name).is_drained(clientId=client_id)
+        return self.get_pipe(pipe_name).is_drained(client_id=client_id)
 
     def is_alive(self):
         """Check whether the Popen process reports alive
@@ -417,7 +402,7 @@ class _Command(object):
             string Client queue ID, unique only when combined with pipe_name
 
         """
-        return self.get_pipe(pipe_name).registerClientQueue(queue_proxy)
+        return self.get_pipe(pipe_name).register_client_queue(queue_proxy)
 
     def unregister_client_queue(self, pipe_name, client_id):
         """Unregister a client queue from a pipe manager
@@ -428,7 +413,7 @@ class _Command(object):
             pipe_name (string): One of "stdout" or "stderr"
             client_id (string): ID of the client queue on this pipe manager
         """
-        self.get_pipe(pipe_name).unRegisterClientQueue(client_id)
+        self.get_pipe(pipe_name).unregister_client_queue(client_id)
 
     def get_line_from_pipe(self, pipe_name, client_id, timeout=-1):
         """Retrieve a line from a pipe manager
@@ -447,8 +432,8 @@ class _Command(object):
         Raises:
             Empty
         """
-        line = self.get_pipe(pipe_name).getLine(clientId=client_id,
-                                                timeout=timeout)
+        line = self.get_pipe(pipe_name).get_line(client_id=client_id,
+                                                 timeout=timeout)
         return line
 
     def destructive_audit(self):
@@ -459,4 +444,4 @@ class _Command(object):
         the last line of the queue or an 'empty' message.
         """
         for pipe in list(self.pipes.values()):
-            pipe.destructiveAudit()
+            pipe.destructive_audit()

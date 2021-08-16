@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+"""Custom queue-pipe adapter to read from thread-safe queues and write their
+contents to a pipe"""
 from __future__ import unicode_literals
 
 import logging
@@ -29,6 +31,8 @@ class _PrPipeWriter(_PrPipe):
             pipeHandle (pipe): Pipe to write records to
         """
         # Initialize the parent class
+        # pylint: disable=bad-super-call
+        # Py3 supports super().__init__; this form is kept for backward compat
         super(type(self), self).__init__(queue=queue,
                                          subclass_name=__name__,
                                          queue_direction="destination",
@@ -42,13 +46,13 @@ class _PrPipeWriter(_PrPipe):
                            queue,
                            queue_lock,
                            stop_event):
-        """Copy lines from a given pipe handle into a local threading.Queue
+        """Copy lines from a local multiprocessing.JoinableQueue into a pipe
 
-        Runs in a separate process, started by __init__. Closes pipe when done
-        reading.
+        Runs in a separate process, started by __init__. Does not close the
+        pipe when done writing.
 
         Args:
-            pipe_name (string): Name of the pipe we will read from
+            pipe_name (string): Name of the pipe we will write to
             pipe_handle (pipe): Pipe to write to
             queue (Queue): Queue to read from
             queue_lock (Lock): Lock used to indicate a write in progress
@@ -70,8 +74,8 @@ class _PrPipeWriter(_PrPipe):
 
                     # Extract the content if the line is in a ContentWrapper
                     # Make sure there is a trailing newline
-                    log.info("Writing line to {}".format(pipe_name))
-                    if type(line) is ContentWrapper:
+                    log.info("Writing line to %s", pipe_name)
+                    if isinstance(line, ContentWrapper):
                         line_str = line.value.rstrip('\n')
                         pipe_handle.write("{}\n".format(line_str))
                     else:
@@ -91,8 +95,7 @@ class _PrPipeWriter(_PrPipe):
 
                 except Empty:
                     # time.sleep(0.01)
-                    log.debug("No line currently available for {}"
-                              .format(pipe_name))
+                    log.debug("No line currently available for %s", pipe_name)
 
                     # Exit if we are asked to stop
                     if stop_event.is_set():
@@ -101,16 +104,16 @@ class _PrPipeWriter(_PrPipe):
 
         log.info("Sub-process complete")
 
-    def putLine(self, clientId, line):
+    def put_line(self, client_id, line):
         """Adds a line to a given client's Queue
 
         Args:
-            clientId (string): ID of the client
+            client_id (string): ID of the client
             line (string): The content to add to the queue
         """
-        q = self.getQueue(clientId)
+        client_q = self.get_queue(client_id)
 
-        if type(line) is ContentWrapper:
-            q.put(line)
+        if isinstance(line, ContentWrapper):
+            client_q.put(line)
         else:
-            q.put(ContentWrapper(line))
+            client_q.put(ContentWrapper(line))

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Utility replicating Unix `which` command"""
 from __future__ import unicode_literals
 
 import os
@@ -18,9 +19,10 @@ def which(program):
     """
 
     def is_exe(fpath):
+        """Determines whether the path is an executable file"""
         return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
 
-    fpath, fname = os.path.split(program)
+    fpath, fname = os.path.split(program)  # pylint: disable=unused-variable
     if fpath:
         if is_exe(program):
             return program

@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """Iterate over list proxies from ProcessRunner"""
-import logging
 import random
 import time
 
 from . import settings
+from .classtemplate import PRTemplate
 from .exceptionhandler import Timeout
 from .timer import Timer
 
 
-class PrIterator(object):
+class PrIterator(PRTemplate):
     """Iterate over list proxies from ProcessRunner"""
     def __init__(self, output_list, events_dict, timeout=None, log_name=None):
         # Unique ID
@@ -22,7 +22,7 @@ class PrIterator(object):
         self.timeout = timeout
 
         self._log = None
-        self._initialize_logging()
+        self._initialize_logging_with_id(__name__)
 
     def __iter__(self):
         return self
@@ -60,24 +60,6 @@ class PrIterator(object):
 
         # We have content
         return self.output_list.pop(0)
-
-    def _initialize_logging(self):
-        if self._log is not None:
-            return
-
-        # Logger name
-        log_name = "{}-{}".format(__name__, self.id)
-
-        if self.log_name is not None:
-            log_name = "{}.{}".format(log_name, self.log_name)
-
-        # Logging
-        self._log = logging.getLogger(log_name)
-        self.add_logging_handler(logging.NullHandler())
-
-    def add_logging_handler(self, handler):
-        """Pass-through for Logging's addHandler method"""
-        self._log.addHandler(handler)
 
     def complete(self):
         """Check whether the list populator is finished"""

@@ -9,6 +9,10 @@ import sys
 import traceback
 
 
+# pylint: disable=super-init-not-called
+# User-defined exceptions don't call their super initializer
+
+
 class SIGINTException(Exception):
     """Represents a ctrl-c interrupt"""
     def __init__(self, value):

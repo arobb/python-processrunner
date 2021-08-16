@@ -13,6 +13,10 @@ Version 2.5.0+
 - DAG feature extension
 -- Better track when stdout/stderr are closed to then close stdin on the receiving instance
 
+Version 2.x
+-----------
+contentwrapper.ContentWrapper.TYPES is moved to contentwrapper.TYPES and is now a proper enum.
+
 Version 2.5.2
 -------------
 Adds additional ways to interact with output, as well as Python 3.8+ on macOS.

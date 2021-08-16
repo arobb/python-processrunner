@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Non-interactive SSH command execution"""
 from __future__ import unicode_literals
 
 from .runcommand import runCommand
@@ -21,6 +22,6 @@ def ssh(remoteAddress, remoteCommand, outputPrefix="ssh> "):
     command = ["ssh", remoteAddress, "-t", "-o", "StrictHostKeyChecking=no",
                remoteCommand]
 
-    returnCode = runCommand(command, outputPrefix)
+    return_code = runCommand(command, outputPrefix)
 
-    return returnCode
+    return return_code

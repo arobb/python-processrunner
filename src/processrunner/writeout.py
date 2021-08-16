@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+"""Wrapper to make async writing to a pipe more reliable across processes"""
 from __future__ import unicode_literals
 
 from kitchen.text.converters import to_bytes
@@ -21,28 +22,28 @@ def writeOut(pipe, outputPrefix):
     # TODO Validate the pipe somehow
 
     def func(line):
-        pipeWriter = getwriter("utf-8")(pipe)
+        pipe_writer = getwriter("utf-8")(pipe)
         output = "{}{}".format(outputPrefix, line)
 
         try:
-            pipeWriter.write(output)
+            pipe_writer.write(output)
 
         except TypeError:
             # Shenanigans with unicode
             try:
-                pipeWriter.write(to_bytes(output))
+                pipe_writer.write(to_bytes(output))
             except TypeError:
                 pipe.write(str(output))
-            except Exception as e:
-                raise ExceptionHandler(e,
-                                       "Crazy pipe writer stuff: {}".format(e))
+            except Exception as exc:
+                raise ExceptionHandler(exc, "Crazy pipe writer stuff: {}"
+                                       .format(exc))
 
-        except ValueError as e:
-            raise ExceptionHandler(e,
-                                   "writeOut caught odd error: {}".format(e))
+        except ValueError as exc:
+            raise ExceptionHandler(exc,
+                                   "writeOut caught odd error: {}".format(exc))
 
         finally:
-            pipeWriter.flush()
+            pipe_writer.flush()
             pipe.flush()
 
     return func

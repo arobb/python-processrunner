@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
+"""Custom pipe-queue adapter to read from a pipe and write *text* content to
+thread-safe queues"""
 from __future__ import unicode_literals
 
 import logging
 
-try:  # Python 2.7
-    from Queue import Empty
-except ImportError:  # Python 3.x
-    from queue import Empty
-
-from .prpipe import _PrPipe
 from .contentwrapper import ContentWrapper
+from .prpipe import _PrPipe
 
 
 # Private class only intended to be used by ProcessRunner
@@ -29,6 +26,8 @@ class _PrPipeReader(_PrPipe):
             pipeHandle (pipe): Pipe to monitor for records
         """
         # Initialize the parent class
+        # pylint: disable=bad-super-call
+        # Py3 supports super().__init__; this form is kept for backward compat
         super(type(self), self).__init__(queue=queue,
                                          subclass_name=__name__,
                                          queue_direction="source",
@@ -69,9 +68,9 @@ class _PrPipeReader(_PrPipe):
             for line in iter(pipe_handle.readline, ''):
                 log.info("Read line, trying to get a lock")
                 with queue_lock:
-                    log.info("Enqueing line of length {}".format(len(line)))
-                    lineContent = ContentWrapper(line)
-                    queue.put(lineContent)
+                    log.info("Enqueing line of length %s", len(line))
+                    line_content = ContentWrapper(line)
+                    queue.put(line_content)
 
                 # Check whether we should stop now
                 if stop_event.is_set():
@@ -83,11 +82,11 @@ class _PrPipeReader(_PrPipe):
 
         log.info("Sub-process complete")
 
-    def getLine(self, clientId, timeout=-1):
+    def get_line(self, client_id, timeout=-1):
         """Retrieve a line from a given client's Queue
 
         Args:
-            clientId (string): ID of the client
+            client_id (string): ID of the client
             timeout (float): <0 for get_nowait behavior, otherwise use
                            get(timeout=timeout); in seconds
 
@@ -97,21 +96,21 @@ class _PrPipeReader(_PrPipe):
         Raises:
             Empty
         """
-        self._log.debug("Trying to get a line for client {}".format(clientId))
+        self._log.debug("Trying to get a line for client %s", client_id)
 
         # Throws Empty
-        q = self.getQueue(clientId)
+        client_q = self.get_queue(client_id)
 
         # Throws Empty
         if timeout < 0:
-            line = q.get_nowait()
+            line = client_q.get_nowait()
 
         else:
-            line = q.get(timeout=timeout)
+            line = client_q.get(timeout=timeout)
 
         # Mark the item as retrieved
-        q.task_done()
+        client_q.task_done()
 
-        self._log.debug("Returning line to client {}".format(clientId))
+        self._log.debug("Returning line to client %s", client_id)
 
         return line.value

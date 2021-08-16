@@ -21,6 +21,7 @@ except ImportError:  # Python 3.x
     import multiprocessing
     Process = multiprocessing.get_context("fork").Process
 
+from .classtemplate import PRTemplate
 from .exceptionhandler import ProcessNotStarted
 
 
@@ -57,7 +58,7 @@ def validate_direction(func):
     return wrapper
 
 
-class QueueLink(object):
+class QueueLink(PRTemplate):
     """Manages publishing from source and client queues"""
 
     def __init__(self, name=None, log_name=None):
@@ -73,8 +74,7 @@ class QueueLink(object):
         self.name = name
         self.log_name = log_name
 
-        self._log = None
-        self._initialize_logging()
+        self._initialize_logging_with_log_name(__name__)
 
         # Indicate whether we have ever been started
         self.started = Event()
@@ -100,26 +100,23 @@ class QueueLink(object):
         """
         raise Exception("Don't pickle me!")
 
-    def _initialize_logging(self):
+    def _initialize_logging_with_log_name(self, class_name):
+        """Need to reverse the print order of log_name and name"""
         if hasattr(self, '_log'):
             if self._log is not None:
                 return
 
         # Make a helpful name
         if self.name is None:
-            name = __name__
+            name = class_name
         else:
-            name = "{}.{}".format(__name__, self.name)
+            name = "{}.{}".format(class_name, self.name)
 
         if self.log_name is not None:
             name = "{}.{}".format(name, self.log_name)
 
         self._log = logging.getLogger(name)
         self.add_logging_handler(logging.NullHandler())
-
-    def add_logging_handler(self, handler):
-        """Add a logging handler to the logger"""
-        self._log.addHandler(handler)
 
     def stop(self):
         """Use to stop somewhat gracefully"""
