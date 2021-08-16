@@ -95,8 +95,6 @@ class ProcessRunner(PRTemplate):
 
         # Shared settings
         settings.init()
-        settings.config["AUTHKEY"] = ''.join([random.choice('0123456789ABCDEF')
-                                             for x in range(256)])
         settings.config["MAX_QUEUE_LENGTH"] = 0  # Maximum length for Queues
         settings.config["ON_POSIX"] = 'posix' in sys.builtin_module_names
         settings.config["NOTIFICATION_DELAY"] = 1  # Seconds for delay notices
@@ -151,8 +149,7 @@ class ProcessRunner(PRTemplate):
 
         # Instantiate the Popen wrapper
         log.debug("Instantiating the command execution manager subprocess")
-        authkey = text(settings.config["AUTHKEY"])
-        self.run_manager = _CommandManager(authkey=authkey.encode())
+        self.run_manager = _CommandManager()
         self.run_manager.start()  # pylint: disable=consider-using-with
 
         # Trigger execution if autostart is True (trigger Popen)
