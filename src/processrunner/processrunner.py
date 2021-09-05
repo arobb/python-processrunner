@@ -934,11 +934,11 @@ class ProcessRunner(PRTemplate):
         current_client_count = 0
 
         if procPipeName is None:
-            for client_dict in self.pipe_client_processes.values():
+            for client_dict in self.pipe_clients.values():
                 current_client_count += len(client_dict)
 
         else:
-            client_dict = self.pipe_client_processes[procPipeName]
+            client_dict = self.pipe_clients[procPipeName]
             current_client_count = len(client_dict)
 
         return current_client_count
