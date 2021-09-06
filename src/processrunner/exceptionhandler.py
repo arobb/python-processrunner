@@ -98,6 +98,19 @@ class Timeout(Exception):
         return repr(self.value)
 
 
+class PotentialDataLoss(Exception):
+    """Raise if there's a potential for data loss
+    """
+    def __init__(self, value=""):
+        """Arguments must be option to prevent triggering
+        https://bugs.python.org/issue15440 when raised in _Command"""
+        self.errno = 8
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
 class ExceptionHandler(Exception):
     """Exception management
 

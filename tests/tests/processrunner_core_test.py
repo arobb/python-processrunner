@@ -9,6 +9,7 @@ import unittest
 from tempfile import NamedTemporaryFile
 
 from parameterized import parameterized
+from processrunner.exceptionhandler import PotentialDataLoss
 from processrunner.exceptionhandler import ProcessAlreadyStarted
 from processrunner.timer import Timer
 
@@ -125,6 +126,24 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             # Trigger one more that is the test
             with self.assertRaises(ProcessAlreadyStarted):
                 proc.start()
+
+    def test_processrunner_collectlines_dataloss_raises_error(self):
+        command = ["sleep", "1"]
+
+        with ProcessRunner(command, autostart=False) as pr:
+            client_id, q = pr.registerForClientQueue("stdout")
+            pr.start()
+
+            timer = Timer(interval=3)
+            while pr.getClientCount() < 1:
+                if timer.interval():
+                    self.assertTrue(False,
+                                     "Timed out waiting for the test to "
+                                     "finish")
+                time.sleep(0.1)
+
+            self.assertRaises(PotentialDataLoss,
+                              pr.collectLines)
 
     def test_processrunner_leak_check(self):
         limit = 100

@@ -36,6 +36,7 @@ from .exceptionhandler import ProcessNotStarted
 from .exceptionhandler import ExceptionHandler
 from .exceptionhandler import HandleNotSet
 from .exceptionhandler import Timeout
+from .exceptionhandler import PotentialDataLoss
 
 # Global values when using ProcessRunner
 PROCESSRUNNER_PROCESSES = []  # Holding list for instances of ProcessRunner
@@ -960,6 +961,20 @@ class ProcessRunner(PRTemplate):
         Returns:
             list. List of strings that are the output lines from selected pipes
         """
+        # Check if we've started, and already have registered clients
+        if self.started():
+            msg = "Potential for data loss when using collectLines after " \
+                  "registering another client"
+            if procPipeName is not None:
+                msg = "{} for {}".format(msg, procPipeName)
+
+            clients = self.getClientCount(procPipeName)
+            self._log.warning("Client count: {}".format(clients))
+            if clients > 0:
+                if PotentialDataLoss not in suppress:
+                    raise PotentialDataLoss(msg)
+
+        # Pick an appropriate pipe name
         pipe_name = "output" if procPipeName is None else procPipeName
         self._log.info("Collecting lines from %s", pipe_name)
 
@@ -977,13 +992,22 @@ class ProcessRunner(PRTemplate):
 
         return output_list
 
-    def readlines(self, procPipeName=None, timeout=None):
-        """Alias of collectLines. Like collectLines, also strips newlines.
+    def readlines(self,
+                     procPipeName=None,
+                     timeout=None,
+                     suppress=None):
+        """Retrieve output lines as a ``list`` for one or all pipes from the
+        command.
+
+        Blocks until the sources are finished and queues drained.
+
+        Alias of collectLines.
 
         Similar to IOBase.readlines, without the hint parameter.
         """
         return self.collectLines(procPipeName=procPipeName,
-                                 timeout=timeout)
+                                 timeout=timeout,
+                                 suppress=suppress)
 
     def write(self, file_path, procPipeName=None, append=False):
         """Specify a file to direct output from the process. Does not block.
