@@ -147,4 +147,4 @@ class ExceptionHandler(Exception):
 
         tbmsg = self.err_type+" traceback (most recent call last):"
         log.error(tbmsg)
-        traceback.print_tb(self.exc_tb)
+        log.error("".join(traceback.format_tb(self.exc_tb)))
