@@ -64,6 +64,9 @@ class PrIterator(PRTemplate):
         # We have content
         return self.output_list.pop(0)
 
+    def __repr__(self):
+        return "\n".join(self)
+
     def complete(self):
         """Check whether the list populator is finished"""
         complete = True
