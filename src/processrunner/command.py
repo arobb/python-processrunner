@@ -323,8 +323,9 @@ class _Command(PRTemplate):
                 if isinstance(pipe, _PrPipeWriter):
                     continue
 
-                pipe_alive = pipe.is_alive()
-                self._log.debug("Pipe %s is_alive is %s",
+                # pipe_alive = pipe.is_alive()
+                pipe_alive = pipe.is_drained()
+                self._log.debug("Pipe %s is_drained is %s",
                                 pipe_name, pipe_alive)
 
                 # Check if the pipe is alive
