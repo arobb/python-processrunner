@@ -845,9 +845,10 @@ class ProcessRunner(PRTemplate):
                     # stopped already
                     run.unregister_client_queue(proc_pipe_name, client_id)
 
-                except EOFError:
-                    log.debug("Caught EOFError while stopping doWrite for"
-                              " client %s for %s", client_id, proc_pipe_name)
+                except (BrokenPipeError, EOFError):
+                    log.debug("Caught BrokenPipeError or EOFError while "
+                              "stopping doWrite for client %s for %s",
+                              client_id, proc_pipe_name)
 
                 complete.set()
 
