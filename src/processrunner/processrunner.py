@@ -141,6 +141,8 @@ class ProcessRunner(PRTemplate):
         # of clients
         self.pipe_clients = dict(stdout=dict(),
                                  stderr=dict())
+        self.pipe_clients_complete_events = dict(stdout=dict(),
+                                                 stderr=dict())
         self.pipe_client_processes = dict(stdout=dict(),
                                           stderr=dict())
 
@@ -500,11 +502,39 @@ class ProcessRunner(PRTemplate):
         (may only be internal maplines)
         """
         self.startMapLines()
+        local_wait_timer = Timer(timeout)
 
+        # Check the _Command wait
         try:
             self.run.wait(timeout=timeout)
         except Timeout as exc:
             raise exc
+
+        # Check the mapLines complete events
+        def check_complete(ctx):
+            complete = True
+
+            # Iterate through the list of pipes
+            for pipe_name, clients in ctx.pipe_clients_complete_events.items():
+
+                # Iterate through the list of clients in each pipe
+                for client_id, client_complete in clients.items():
+                    # ctx._log.debug(
+                    #     "{} client {} status {}".format(pipe_name,
+                    #                                     client_id,
+                    #                                     client_complete
+                    #                                     .is_set()))
+                    complete = complete and client_complete.is_set()
+
+            # ctx._log.debug("Overall {}".format(complete))
+            return complete
+
+        while not check_complete(self):
+            if timeout is not None and local_wait_timer.interval():
+                raise Timeout("Wait timed out waiting for all maps to "
+                              "complete")
+
+            time.sleep(0.001)
 
         return self
 
@@ -840,6 +870,10 @@ class ProcessRunner(PRTemplate):
 
         # Store the process so it can potentially be re-joined
         self.pipe_client_processes[procPipeName][text(client_id)] = client
+
+        # Store the complete event for wait to use
+        self.pipe_clients_complete_events[procPipeName][text(client_id)] = \
+            complete
 
         return complete
 
