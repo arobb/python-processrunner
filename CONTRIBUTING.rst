@@ -20,6 +20,12 @@ Some test commands
     # Run just one test
     tox -- tests/tests/processrunner_core_test.py::ProcessRunnerCoreTestCase::test_processrunner_onek_check_content
 
+    # Disable parallel execution
+    tox -- -n 0
+
+    # Show the detailed list of tests while running (in sequential mode)
+    tox -- -n 0 --verbose
+
 Publishing
 ----------
 Configure Twine and the PyPi RC file at `~/.pypirc` .
