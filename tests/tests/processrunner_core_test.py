@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import logging.config
 import multiprocessing
 import os
 import sys
@@ -38,6 +39,11 @@ def printQsize(proc):
 
 class ProcessRunnerTestCase(unittest.TestCase):
     def setUp(self):
+        log_config_fname = os.path.dirname(
+            __file__) + "/../content/testing_logging_config.ini"
+        logging.config.fileConfig(fname=log_config_fname,
+                                  disable_existing_loggers=False)
+
         self.sampleCommandDir = os.path.join(os.path.dirname(__file__), "..")
         sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
