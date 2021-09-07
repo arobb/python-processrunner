@@ -70,7 +70,7 @@ class ProcessRunnerCoreTestCase(ProcessRunnerTestCase):
             output = proc.collectLines()
             print("Following collectLines time: {}ms".format(t.lap()))
 
-            result = proc.wait().poll()
+            result = proc.wait(timeout=5).poll()
             print("Following proc.wait().poll() time: {}ms".format(t.lap()))
 
         length = len(output)
