@@ -507,8 +507,12 @@ class ProcessRunner(PRTemplate):
         # Check the _Command wait
         self.run.wait(timeout=timeout)
 
+        self._log.info("Process complete, starting wait for consumers")
+        interval_timer = Timer(settings.config["NOTIFICATION_DELAY"])
+
         # Check the mapLines complete events
-        def check_complete(ctx):
+        def check_complete(ctx, timer):
+            log_flag = timer.interval()
             complete = True
 
             # Iterate through the list of pipes
@@ -526,7 +530,7 @@ class ProcessRunner(PRTemplate):
             # ctx._log.debug("Overall {}".format(complete))
             return complete
 
-        while not check_complete(self):
+        while not check_complete(self, interval_timer):
             if timeout is not None and local_wait_timer.interval():
                 raise Timeout("Wait timed out waiting for all maps to "
                               "complete")
