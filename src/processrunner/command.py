@@ -339,15 +339,15 @@ class _Command(PRTemplate):
         timer = Timer(interval=settings.config["NOTIFICATION_DELAY"])
         while self.poll() is None or is_alive_local() is True:
             if timer.interval():
-                self._log.debug("Waiting patiently: poll is %s, is_alive_local"
-                                " is %s", self.poll(), is_alive_local())
+                self._log.info("Waiting patiently: poll is %s, is_alive_local"
+                               " is %s", self.poll(), is_alive_local())
 
             # If we've reached the timeout, exit
             if timeout is not None:
                 if timeout_obj.interval():
                     message = "wait() has timed out " \
                               "at {} seconds".format(timeout)
-                    self._log.debug(message)
+                    self._log.error(message)
                     raise Timeout(message)
 
             time.sleep(0.01)
