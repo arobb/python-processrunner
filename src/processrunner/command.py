@@ -324,13 +324,15 @@ class _Command(PRTemplate):
                     continue
 
                 # pipe_alive = pipe.is_alive()
-                pipe_alive = pipe.is_drained()
+                pipe_drained = pipe.is_drained()
                 self._log.debug("Pipe %s is_drained is %s",
-                                pipe_name, pipe_alive)
+                                # pipe_name, pipe_alive)
+                                pipe_name, pipe_drained)
 
                 # Check if the pipe is alive
                 # Any pipe alive will cause us to return True
-                alive = alive or pipe_alive
+                # alive = alive or pipe_alive
+                alive = alive and not pipe_drained
 
             return alive
 
