@@ -805,6 +805,7 @@ class ProcessRunner(PRTemplate):
         """
         return self.run.destructive_audit()
 
+    @deprecated("Replaced by map")
     def mapLines(self, func, procPipeName):
         """Run a function against each line presented by a pipe manager
 
@@ -1072,6 +1073,7 @@ class ProcessRunner(PRTemplate):
 
         return current_client_count
 
+    @deprecated("Replaced by readlines")
     def collectLines(self,
                      procPipeName=None,
                      timeout=None,
