@@ -520,14 +520,16 @@ class ProcessRunner(PRTemplate):
 
                 # Iterate through the list of clients in each pipe
                 for client_id, client_complete in clients.items():
-                    # ctx._log.debug(
-                    #     "{} client {} status {}".format(pipe_name,
-                    #                                     client_id,
-                    #                                     client_complete
-                    #                                     .is_set()))
-                    complete = complete and client_complete.is_set()
+                    client_complete_bool = client_complete.is_set()
+                    complete = complete and client_complete_bool
 
-            # ctx._log.debug("Overall {}".format(complete))
+                    # Let the user know when we're "stuck" here
+                    if log_flag:
+                        ctx._log.info("%s client %s is %s",
+                                      pipe_name,
+                                      client_id,
+                                      client_complete_bool)
+
             return complete
 
         while not check_complete(self, interval_timer):
