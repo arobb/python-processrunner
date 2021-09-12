@@ -59,6 +59,7 @@ def getActiveProcesses():
     return active
 
 
+# TODO: Rationalize the terminate/shutdown methods
 class ProcessRunner(PRTemplate):
     """Easily execute external processes"""
 
@@ -270,9 +271,10 @@ class ProcessRunner(PRTemplate):
         Watch the output process output(s). When they close and queues
         drain, close stdin on the downstream instance.
 
-        :argument _Command run: The "run" variable
-        :argument ProcessRunner downstream_pr: The linked PR instance
-        :argument dict out_queues: dict("stdout": clientId, "stderr": clientId)
+        Args:
+            run (_Command): The "run" variable
+            downstream_pr (ProcessRunner): The linked PR instance
+            out_queues (dict): dict("stdout": clientId, "stderr": clientId)
         """
         logger_name = "{}".format(__name__)
         log = logging.getLogger(logger_name)
@@ -307,17 +309,24 @@ class ProcessRunner(PRTemplate):
                 return
 
     def getCommand(self):
-        """Retrieve the command list
+        """Retrieve the command list originally passed in
 
         Returns:
-            list. The list of strings passed to Popen
+            list: The list of strings passed to Popen
         """
         return self.command
 
     def validateCommandFormat(self, command):
         """Run validation against the command list argument
 
-        Used for validation by ProcessRunner.__init__"""
+        Used for validation by ProcessRunner.__init__
+
+        Args:
+            command (list): A list of strings
+
+        Returns:
+            bool: Whether the command list is valid
+        """
         self._log.debug("Command as provided (commas separating parts): %s",
                         ", ".join(command))
         self._log.debug("Validating command list")
@@ -344,7 +353,13 @@ class ProcessRunner(PRTemplate):
         return True
 
     def enableStdin(self):
-        """Enable stdin on the target process before the process has started"""
+        """Use to open the stdin pipe before starting the command
+
+        Raises:
+            KeyError: Stdin has already been enabled
+            ProcessAlreadyStarted: Stdin cannot be enabled at this point
+                because the command has already started
+        """
         if self.run is None:
             pass
 
@@ -373,7 +388,7 @@ class ProcessRunner(PRTemplate):
             self.stdin = True
 
     def closeStdin(self):
-        """Proxy to call _Command.close_stdin"""
+        """Close the stdin pipe"""
         if self.stdin is None:
             return
 
@@ -382,16 +397,23 @@ class ProcessRunner(PRTemplate):
 
         except HandleNotSet:
             self._log.debug("Trying to close stdin, but the handle was never "
-                           "set")
+                            "set")
 
         except IOError:
             self._log.debug("Trying to close stdin, but the process has"
                             " already stopped")
 
     def start(self):
-        """Pass through to _Command.start
+        """Start the process
 
-        :raises exceptionhandler.ProcessAlreadyStarted"""
+        Use when setting ``autostart=False`` to run the target command.
+
+        DO NOT use when ``autostart=True`` (the default), as this will raise a
+        :exc:`ProcessAlreadyStarted` exception.
+
+        Raises:
+            ProcessAlreadyStarted: The command has already been started
+        """
 
         # Make sure all mapLines watchers are started
         self.startMapLines()
@@ -412,7 +434,9 @@ class ProcessRunner(PRTemplate):
     def started(self):
         """Whether the command has started
 
-        :returns bool"""
+        Returns:
+            bool: Whether the command has been started
+        """
         return self.run.get("started")
 
     def isQueueEmpty(self, procPipeName, clientId):
@@ -423,7 +447,7 @@ class ProcessRunner(PRTemplate):
             clientId (string): ID of the client queue on this pipe manager
 
         Returns:
-            bool.
+            bool: True if the queue(s) is/are empty
         """
         return self.run.is_queue_empty(procPipeName, clientId)
 
@@ -435,7 +459,7 @@ class ProcessRunner(PRTemplate):
         queue. Sometimes (especially externally) that's not possible.
 
         Returns:
-            bool
+            bool: True if all queues are empty
         """
         return self.run.are_all_queues_empty()
 
@@ -443,7 +467,7 @@ class ProcessRunner(PRTemplate):
         """Check whether the Popen process reports alive
 
         Returns:
-            bool
+            bool: True if the command is still running
         """
         return self.run.is_alive()
 
@@ -451,7 +475,10 @@ class ProcessRunner(PRTemplate):
         """Invoke the subprocess.Popen.poll() method
 
         Returns:
-            None, int. NoneType if alive, or int with exit code if dead
+            Type depends on the status of the command
+
+            - None: If the command is still running
+            - int: Exit code of the command once stopped
         """
         try:
             self.returncode = self.run.poll()
@@ -491,16 +518,24 @@ class ProcessRunner(PRTemplate):
                     exitcode = client_process.exitcode
 
     def wait(self, timeout=None):
-        """Block until the Popen process exits
+        """Block until the Popen process exits and reader queues are drained
 
         Does some extra checking to make sure the pipe managers have finished
-        reading
+        reading, and consumers have read off all consumer queues.
 
-        :argument float timeout: Max time in seconds before raising Timeout
+        Supports a timeout argument to handle unexpected delays.
 
-        TODO: Check if this will deadlock if clients aren't finished reading
-        (may only be internal maplines)
+        Args:
+            timeout (float): Max time in seconds before raising :exc:`Timeout`
+
+        Raises:
+            Timeout: When the command has run longer than ``timeout``
+
+        Returns:
+            ProcessRunner: Supports method chaining
         """
+        # TODO: Check if this will deadlock if clients aren't finished
+        #  reading (may only be internal maplines)
         self.startMapLines()
         local_wait_timer = Timer(timeout)
 
@@ -544,13 +579,17 @@ class ProcessRunner(PRTemplate):
     def terminate(self, timeoutMs=3000):
         """Terminate both the target process (the command) and reader queues.
 
-        Use terminate to gracefully stop the target process (the command) and
-        readers once you're done reading. Use `shutdown` if you are just
-        trying to clean up, as it will trigger `terminate`.
+        Use :meth:`terminate` to gracefully stop the target process (the
+        command) and readers once you're done reading. Use :meth:`shutdown`
+        if you are just trying to clean up, as it will trigger
+        :meth:`terminate`.
 
         Args:
-            timeoutMs (int): Milliseconds terminate should wait for main
-                process to exit before raising an error
+            timeoutMs (int): Milliseconds :meth:`terminate` should wait for
+                main process to exit before raising a :exc:`Timeout` exception
+
+        Raises:
+            Timeout: If the command hasn't stopped within ``timeoutMs``
         """
         # Close the stdin pipe
         if self.stdin is not None:
@@ -567,7 +606,7 @@ class ProcessRunner(PRTemplate):
             time.sleep(interval)
 
         if self.isAlive():
-            raise Exception("Main process has not terminated")
+            raise Timeout("Main process has not terminated")
 
         # Kill the queues
         self._terminate_queues()
@@ -624,7 +663,7 @@ class ProcessRunner(PRTemplate):
         """Shutdown the process managers. Run after verifying terminate/kill
         has destroyed any child processes
 
-        Runs `terminate` in case it hasn't already been run
+        Runs :meth:`terminate` in case it hasn't already been run
         """
         # Tell mapLines to stop
         self.stop_event.set()
@@ -671,24 +710,40 @@ class ProcessRunner(PRTemplate):
             procPipeName (string): One of "stdout" or "stderr"
 
         Returns:
-            string. Client's queue ID on this pipe
+            tuple: Client's queue ID (``string``) on this pipe and the new
+            :class:`multiprocessing.JoinableQueue`
         """
+        # TODO: Determine whether this should be a private class
+
+        # Create a new queue
         joinable_q = self.queue_manager\
             .JoinableQueue(settings.config["MAX_QUEUE_LENGTH"])
+
+        # Connect this queue to receive records from procPipeName
         client_id = self.run.register_client_queue(procPipeName, joinable_q)
+
+        # Store this queue for future reference
         self.pipe_clients[procPipeName][client_id] = joinable_q
 
         return client_id, joinable_q
 
     def _link_client_queues(self, procPipeName, queue):
-        """Connect an existing registerForClientQueue queue to another queue
+        """Connect an existing :meth:`registerForClientQueue` queue to another
+        queue
 
-        Use an existing queue from registerForClientQueue and connect
+        Use an existing queue from :meth:`registerForClientQueue` and connect
         it to another queue. Used for process chaining, connecting stdout
         or stderr of one process to the stdin of the next.
 
+        Example:
+            # Connect a downstream stdin to the stdout of the current instance
+            stdin_client_id, stdin_q = downstream_pr.registerForClientQueue(
+            "stdin")
+            self._link_client_queues("stdout", stdin_q)
+
         Args:
-            queue (Queue proxy)
+            procPipeName (string): Name of a pipe (e.g. stdout)
+            queue (Queue): A queue proxy
 
         Returns:
             int
@@ -709,7 +764,7 @@ class ProcessRunner(PRTemplate):
             clientId (string): ID of the client queue on this pipe manager
 
         Returns:
-            string. Client's queue ID that was unregistered
+            string: Client's queue ID that was unregistered
         """
         self.run.unregister_client_queue(procPipeName, clientId)
 
@@ -719,19 +774,19 @@ class ProcessRunner(PRTemplate):
     def getLineFromPipe(self, procPipeName, clientId, timeout=-1):
         """Retrieve a line from a pipe manager
 
-        Throws Empty if no lines are available.
+        Throws :exc:`Empty` if no lines are available.
 
         Args:
             procPipeName (string): One of "stdout" or "stderr"
             clientId (string): ID of the client queue on this pipe manager
-            timeout (float): <0 for get_nowait behavior, otherwise use
-                           get(timeout=timeout); in seconds; default -1
+            timeout (float): Less than 0 for get_nowait behavior, otherwise
+                uses ``Queue.get(timeout=timeout)``; in seconds; default -1
 
         Returns:
-            string. Line from specified client queue
+            string: Line from specified client queue
 
         Raises:
-            Empty
+            Empty: No lines are available
         """
         line = self.run.get_line_from_pipe(pipe_name=procPipeName,
                                            client_id=clientId,
@@ -748,13 +803,14 @@ class ProcessRunner(PRTemplate):
         return self.run.destructive_audit()
 
     def mapLines(self, func, procPipeName):
-        """Run a function against each line presented by one pipe manager
+        """Run a function against each line presented by a pipe manager
 
-        Returns a multiprocessing.Event that can be used to monitor the status
-        of the function. When the process is dead, the queues are empty, and
-        all lines are processed, the Event will be set to True. This can be
-        used as a blocking mechanism by functions invoking mapLines, by using
-        Event.wait().
+        Returns a :class:`multiprocessing.Event` that can be used to monitor
+        the status of the function. When the process is dead, the queues are
+        empty, and all lines are processed, the :class:`multiprocessing.Event`
+        will be set to ``True``. This can be used as a blocking mechanism by
+        functions invoking :meth:`mapLines`, by using
+        :meth:`multiprocessing.Event.wait`.
 
         Be careful to call startMapLines directly if invoking mapLines after
         start() has been called.
@@ -887,9 +943,9 @@ class ProcessRunner(PRTemplate):
     #   mapLines, so we can now start the clients sequentially without any
     #   possible message loss
     def startMapLines(self, force=False):
-        """Start mapLines child processes
+        """Start :meth:`mapLines` child processes
 
-        Triggered by wait(), so almost never needs to be called directly.
+        Triggered by :meth:`wait`, so almost never needs to be called directly
         """
         self._log.info("Starting mapLines")
 
@@ -909,22 +965,27 @@ class ProcessRunner(PRTemplate):
                         pass
 
     def getExpandingList(self, procPipeName=None):
-        """Get a shared list and one or more completion Events for lines from
-        one or more output pipes (not stdin). Non-blocking.
+        """Get a shared ``list`` and one or more completion ``Events`` for
+        lines from one or more output pipes (not stdin). Non-blocking in
+        that it does not wait for the list to be populated.
 
         Args:
-            procPipeName (string): Name of a pipe to read, or None to read all
+            procPipeName (string): Name of a pipe to read, or ``None`` to
+                read all
 
         Returns:
-            (list, dict): List of output lines and dict(pipename: Event)
+            tuple: List of output lines and ``dict(pipename: Event,)``
 
-        Returns a tuple of list, dict. List of the output lines, that expands
-        as mapLines adds to it, and a dict of [pipeName: Event,]. When an
-        Event is set, that means the given pipe has finished. The list is a
-        multiprocessing.Manager.list, shared with the mapLines process
-        populating the content.
+        Returns a tuple of ``(list, dict)``. List of the output lines that
+        expands as :meth:`mapLines` adds to it, and a ``dict`` of ``[pipeName:
+        Event,]``. When an ``Event`` is "set", that means the given pipe has
+        finished. The list is a :class:`multiprocessing.Manager.list`, shared
+        with the :meth:`mapLines` process populating the content.
 
-        Used as a component of collectLines.
+        The ``dict`` will have multiple values if ``procPipeName`` is
+        ``None``, one for each output pipe.
+
+        Used as a component of :meth:`collectLines`.
         """
         if procPipeName is not None:
             if procPipeName.lower() == "stdin":
@@ -948,7 +1009,7 @@ class ProcessRunner(PRTemplate):
 
                 # Register for the mapping
                 complete_events_dict[pipe_name] = self.mapLines(to_output,
-                                                               pipe_name)
+                                                                pipe_name)
                 self._log.info("Registered %s", pipe_name)
 
         else:
@@ -966,9 +1027,12 @@ class ProcessRunner(PRTemplate):
     def getClientCount(self, procPipeName=None):
         """Return the number of clients for a given pipe, or all pipes
 
-        :argument string procPipeName: Name of the pipe
+        Args:
+            procPipeName (string): Name of the pipe
 
-        :returns int
+        Returns:
+            int: Number of clients of ``procPipeName`` or all pipes if
+                ``procPipeName`` is None
         """
         current_client_count = 0
 
@@ -982,23 +1046,40 @@ class ProcessRunner(PRTemplate):
 
         return current_client_count
 
-    def collectLines(self, procPipeName=None, timeout=None):
-        """Retrieve output lines as a list for one or all pipes from the
-        process. Will start the process if it is not already running!
+    def collectLines(self,
+                     procPipeName=None,
+                     timeout=None,
+                     suppress=None):
+        """Retrieve output lines as a ``list`` for one or all pipes from the
+        command.
 
-        Removes trailing newlines.
         Blocks until the sources are finished and queues drained.
 
-        Kwargs:
+        .. admonition:: Please note
+
+            - Will start the command if it is not already running
+            - Removes trailing newlines
+
+        If the command is already running, you will get a PotentialDataLoss
+        exception. Catch the exception if the potenital data loss is
+        acceptable in your situation.
+
+        Args:
             procPipeName (string): One of "stdout" or "stderr"
-            timeout (float): Max length to stay in collectLines, raises Timeout
+            timeout (float): Max time to stay in :meth:`collectLines`
+            suppress (list or None): List of exceptions to not raise
 
         Raises:
-            ProcessRunner.Timeout
+            Timeout: If ``timeout`` is exceeded
+            PotentialDataLoss: Command is started and other readers have
+                already been registered
 
         Returns:
-            list. List of strings that are the output lines from selected pipes
+            list: List of strings that are the output lines from selected pipes
         """
+        if suppress is None:
+            suppress = []
+
         # Check if we've started, and already have registered clients
         if self.started():
             msg = "Potential for data loss when using collectLines after " \
@@ -1007,7 +1088,6 @@ class ProcessRunner(PRTemplate):
                 msg = "{} for {}".format(msg, procPipeName)
 
             clients = self.getClientCount(procPipeName)
-            self._log.warning("Client count: {}".format(clients))
             if clients > 0:
                 if PotentialDataLoss not in suppress:
                     raise PotentialDataLoss(msg)
@@ -1016,10 +1096,11 @@ class ProcessRunner(PRTemplate):
         pipe_name = "output" if procPipeName is None else procPipeName
         self._log.info("Collecting lines from %s", pipe_name)
 
+        # Get a unique iterator over the pipe(s)
         output_iter = getattr(self, pipe_name)
         output_iter.settimeout(timeout=timeout)
 
-        # Start the process if it hasn't been already
+        # Start the command if it hasn't been already
         if not self.started():
             self.start()
 
@@ -1042,6 +1123,23 @@ class ProcessRunner(PRTemplate):
         Alias of collectLines.
 
         Similar to IOBase.readlines, without the hint parameter.
+
+        .. admonition:: Please note
+
+            - Will start the command if it is not already running
+            - Removes trailing newlines
+
+        If the command is already running, you may get a
+
+        Args:
+            procPipeName (string): One of "stdout" or "stderr"
+            timeout (float): Max time to stay in :meth:`collectLines`
+
+        Raises:
+            Timeout: If ``timeout`` is exceeded
+
+        Returns:
+            list: List of strings that are the output lines from selected pipes
         """
         return self.collectLines(procPipeName=procPipeName,
                                  timeout=timeout,
@@ -1050,13 +1148,14 @@ class ProcessRunner(PRTemplate):
     def write(self, file_path, procPipeName=None, append=False):
         """Specify a file to direct output from the process. Does not block.
 
-        :argument string file_path: Path to a file that should receive output
-        :argument string procPipeName: Outbound pipe to reference (stdout,
-                                       stderr)
-        :argument bool append: Whether to append to an existing file. Default
-                               is to truncate the file
+        Args:
+            file_path (string): Path to a file that should receive output
+            procPipeName (string): Outbound pipe to reference (stdout, stderr)
+            append (bool): ``True`` to append to an existing file. Default
+                (``False``) is to truncate the file
 
-        :return ProcessRunner
+        Returns:
+             ProcessRunner: Supports method chaining
         """
         # TODO: Figure out whether this should be refactored with Pr...Writer
         file_path = os.path.abspath(file_path)
