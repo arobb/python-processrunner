@@ -69,7 +69,7 @@ class ProcessRunnerChainingTestCase(unittest.TestCase):
 
         # Starts the generator
         # Timeout extended for slow tests when run in parallel
-        inputText_list = contentGeneratorProc.collectLines(timeout=2)
+        inputText_list = contentGeneratorProc.collectLines(timeout=5)
 
         # Write another test to verify that we can have a long delay
         # Wait to start the writer to see if this will break anything
