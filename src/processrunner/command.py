@@ -336,7 +336,7 @@ class _Command(PRTemplate):
 
             return alive
 
-        timer = Timer(interval=1)
+        timer = Timer(interval=settings.config["NOTIFICATION_DELAY"])
         while self.poll() is None or is_alive_local() is True:
             if timer.interval():
                 self._log.debug("Waiting patiently: poll is %s, is_alive_local"
