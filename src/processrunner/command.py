@@ -350,7 +350,7 @@ class _Command(PRTemplate):
                     self._log.error(message)
                     raise Timeout(message)
 
-            time.sleep(0.01)
+            time.sleep(0.005)
 
     def terminate(self):
         """Proxy call for Popen.terminate
