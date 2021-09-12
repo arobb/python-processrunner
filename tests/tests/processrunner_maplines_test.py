@@ -6,6 +6,7 @@ from __future__ import unicode_literals
 #   registered for the client is incorrect (0, instead of 1). I have been unable to
 #   track down where this is coming from. AR June 2017
 #
+import logging.config
 import multiprocessing
 import os
 import sys
@@ -38,6 +39,11 @@ def printQsize(proc):
 
 class ProcessRunnerTestCase(unittest.TestCase):
     def setUp(self):
+        log_config_fname = os.path.dirname(
+            __file__) + "/../content/testing_logging_config.ini"
+        logging.config.fileConfig(fname=log_config_fname,
+                                  disable_existing_loggers=False)
+
         sampleCommandPath = os.path.join(os.path.dirname(__file__), '..', 'test-output-script.py')
         self.sampleCommandPath = sampleCommandPath
 
