@@ -940,6 +940,29 @@ class ProcessRunner(PRTemplate):
 
         return complete
 
+    def map(self, func, procPipeName):
+        """Run a function against each line presented by a pipe manager
+
+        Returns a :class:`multiprocessing.Event` that can be used to monitor
+        the status of the function. When the process is dead, the queues are
+        empty, and all lines are processed, the :class:`multiprocessing.Event`
+        will be set to ``True``. This can be used as a blocking mechanism by
+        functions invoking :meth:`ProcessRunner.map`, by using
+        :meth:`~multiprocessing.Event.wait`.
+
+        Be careful to call startMapLines directly if invoking map after
+        start() has been called.
+
+        Args:
+            func (function): A function that takes one parameter, the line
+                from the pipe
+            procPipeName (string): One of "stdout" or "stderr"
+
+        Returns:
+            multiprocessing.Event
+        """
+        return self.mapLines(func, procPipeName)
+
     # Eliminates a potential race condition in mapLines if two are started on
     #   the same pipe
     # All client queues are registered at the beginning of the call to
