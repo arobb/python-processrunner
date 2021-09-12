@@ -202,11 +202,11 @@ class ProcessRunner(PRTemplate):
         # Get a list proxy for one or both outbound pipes
         if self.iterators[item] is None:
             if item == 'output':
-                output, event = self.getExpandingList()
                 client_count = self.getClientCount()
+                output, event = self.getExpandingList()
             else:
-                output, event = self.getExpandingList(item)
                 client_count = self.getClientCount(item)
+                output, event = self.getExpandingList(item)
 
             # Warn the user about potential loss
             if self.started() and client_count > 0:
