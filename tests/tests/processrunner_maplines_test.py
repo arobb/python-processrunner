@@ -73,10 +73,10 @@ class ProcessRunnerMaplinesTestCase(ProcessRunnerTestCase):
             ml2 = proc.mapLines(f2, "stdout")
 
             proc.start()
-            proc.wait()  # Wait for the process to complete
+            proc.wait(timeout=5)  # Wait for the process to complete
 
-            ml1.wait()  # Wait for mapLines to complete
-            ml2.wait()  # Wait for mapLines to complete
+            ml1.wait(timeout=5)  # Wait for mapLines to complete
+            ml2.wait(timeout=5)  # Wait for mapLines to complete
 
             textOut1 = client1[0]
             textOut2 = client2[0]
