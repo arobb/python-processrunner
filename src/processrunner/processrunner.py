@@ -505,10 +505,7 @@ class ProcessRunner(PRTemplate):
         local_wait_timer = Timer(timeout)
 
         # Check the _Command wait
-        try:
-            self.run.wait(timeout=timeout)
-        except Timeout as exc:
-            raise exc
+        self.run.wait(timeout=timeout)
 
         # Check the mapLines complete events
         def check_complete(ctx):
