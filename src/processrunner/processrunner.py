@@ -413,6 +413,9 @@ class ProcessRunner(PRTemplate):
 
         Raises:
             ProcessAlreadyStarted: The command has already been started
+
+        Returns:
+            ProcessRunner: Supports method chaining
         """
 
         # Make sure all mapLines watchers are started
@@ -427,9 +430,9 @@ class ProcessRunner(PRTemplate):
                                 " it is already enabled")
 
         # Start the target process
-        ret_val = self.run.start()
+        self.run.start()
 
-        return ret_val
+        return self
 
     def started(self):
         """Whether the command has started
