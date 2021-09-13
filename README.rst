@@ -1,5 +1,13 @@
 Python ProcessRunner
 ====================
+
+.. image:: https://badge.fury.io/py/processrunner.svg
+   :target: https://pypi.org/project/processrunner
+   :alt: Pypi Version
+.. image:: https://readthedocs.org/projects/processrunner/badge/?version=latest
+   :target: http://processrunner.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
+
 Designed to make reading from external processes easier. Does not permit interactive communication with the process, but rather provides (usually) simplified consumption of process output, especially targeted at logging use cases.
 
 Output can be sent to multiple locations. E.g. the stdout and stderr of an external process can be written to one or multiple files, AND also to the pipes of the local process.

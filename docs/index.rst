@@ -1,17 +1,32 @@
 Welcome to ProcessRunner's documentation!
 =========================================
+
+.. image:: https://badge.fury.io/py/processrunner.svg
+   :target: https://pypi.org/project/processrunner
+   :alt: Pypi Version
+.. image:: https://readthedocs.org/projects/processrunner/badge/?version=latest
+   :target: http://processrunner.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
+
 This documentation includes an introduction to the purpose of ProcessRunner,
 example uses, and API docs.
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 1
+   :caption: Contents
+
+   api
+   examples
+   glossary
+   changelog
+   internals
 
 Introduction and Background
 ===========================
 ProcessRunner is built to run external programs and collect their
-character (string/non-binary) output and is built on the :class:`subprocess.Popen` library. It simplifies the collection of output when multiple
-concurrent copies of that output are needed.
+character (string/non-binary) output and is built on the
+:class:`subprocess.Popen` library. It simplifies the management of output when
+multiple concurrent copies of that output are needed.
 
 ProcessRunner was originally built to split the output of a potentially
 long-running command line application where it was necessary to write the
@@ -40,7 +55,8 @@ started by the class can be retrieved by calling
 Determining when to stop
 ------------------------
 There are multiple mechanisms to determine when the :term:`command` has
-stopped and :term:`readers` have finished.
+stopped and :term:`readers` have finished. This may seem like a topic for
+later, but skipping this can cause indefinite hangs!
 
 :term:`Blocking` methods hold (block) the user's application from continuing to
 execute. :meth:`wait` is the most thorough, as it blocks until both the
@@ -57,9 +73,9 @@ returns a complete list of all output once the :term:`command` has finished.
 
 When using the :term:`non-blocking` methods :meth:`map` and :meth:`write`,
 it is necessary to use another mechanism to ensure all output has been
-processed. It is not required to process all output, so
-:class:`ProcessRunner` does not enforce the consumption of all lines by all
-readers. (Except when using :meth:`wait`.)
+processed. :class:`ProcessRunner` does not require that all output be
+processed by a :term:`reader`, except when using :meth:`wait`. (Further
+discussion later in this section.)
 
 A potentially risky situation arises when using :meth:`map` and :meth:`wait`
 . If a :meth:`map` consumer never finishes reading all the output queued for
@@ -73,15 +89,6 @@ leverage to determine when the mapping has completed.
 returns a ``bool``. In this context, ``False`` means the map is incomplete,
 while ``True`` means it has finished and there are no more :term:`lines` to
 be processed. For an example of this, see :ref:`Non-blocking example 1`.
-
-Glossary
-========
-Throughout this documentation these terms have specific meanings.
-
-.. toctree::
-   :maxdepth: 2
-
-   glossary
 
 Quickstart
 ==========
@@ -184,22 +191,7 @@ To quickly direct output to a file, the :meth:`write` method has you covered:
     immediately. In this case, that happens before the output from the ``seq``
     command makes it into ``output.txt``.
 
-Examples
-========
-
-.. toctree::
-   :maxdepth: 2
-
-   examples
-
-API Reference
-=============
-Detailed method-level information.
-
-.. toctree::
-   :maxdepth: 2
-
-   api
+See more examples on the :doc:`examples page <examples>`.
 
 Issues
 ======
@@ -227,15 +219,6 @@ discussed in https://bugs.python.org/issue33725. See `Github`_ for details
 on the changes.
 
 .. _Github: https://github.com/arobb/python-processrunner/commit/06f4f18c163a2d27ad5f6f651d9aa01041272263
-
-Change log
-==========
-Description of changes across versions
-
-.. toctree::
-   :maxdepth: 2
-
-   changelog
 
 Indices and tables
 ==================
