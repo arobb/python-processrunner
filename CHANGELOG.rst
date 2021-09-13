@@ -2,30 +2,59 @@ Change Log
 ==========
 Documented changes to the project.
 
-Version 2.5.0+
---------------
+Version 2.7.0+ (TODOs)
+----------------------
 - Internal ContentWrapper class manage value changes across ContentWrapper.THRESHOLD
--- If the values grow or shink, ContentWrapper should adapt its management
+    - If the values grow or shink, ContentWrapper should adapt its management
 - Internal ContentWrapper class add created and updated timestamps to enable sorting
 - Ability to sort combined outputs (stdout+stderr) by created timestamps
 - Create diagram of internal ProcessRunner execution model
 - Create a performance baseline compared to shell pipe actions
 - DAG feature extension
--- Better track when stdout/stderr are closed to then close stdin on the receiving instance
+    - Better track when stdout/stderr are closed to then close stdin on the
+      receiving instance
 
 Version 2.x
 -----------
 contentwrapper.ContentWrapper.TYPES is moved to contentwrapper.TYPES and is now a proper enum.
+
+Version 2.6.0
+-------------
+Major changes:
+
+- Documentation on ReadTheDocs!
+- Renamed a large number of internal methods to conform to PEP standards
+- Reconfigured to use ``tox``
+- Re-enabled use of setuptools-scm to support Git tag-based versioning
+- Added validations using pylint, pytest coverage, and bandit
+- Moved code under ``src`` directory
+- :meth:`wait` behavior change: Now waits for all consumers to finish reading
+- :meth:`start` now returns ``self`` rather than ``True``
+- NEW :meth:`map` method mirrors :meth:`mapLines` and will eventually
+  replace it.
+- NEW :meth:`readlines` method mirrors :meth:`collectLines` and will
+  eventually replace it
+- Multiple methods now support timeouts
+    - ProcessRunner.wait
+- :meth:`collectLines` will now raise a new exception
+  :exc:`PotentialDataLoss` if it is called after :meth:`start` while other
+  readers are attached
+
+Minor changes:
+
+- :meth:`mapLines` now logs when a :exc:`BrokenPipeError` occurs
 
 Version 2.5.2
 -------------
 Adds additional ways to interact with output, as well as Python 3.8+ on macOS.
 
 Minor features:
+
 - Mimic the IO read_line generator
 - Add ProcessRunner.stdout/stderr/output attributes as iterators
 
 Fixes:
+
 - Compatibility with Python 3.8+ on macOS following change to default multiprocessing start method related to Python issue 33725
 
 Version 2.5.1
@@ -38,23 +67,26 @@ This is a substantial refactor of many parts of the codebase. There should be
 only minor API changes.
 
 New major features:
+
 - Simple DAG creation across ProcessRunner instances
 - New write() method to easily redirect content into files
 
 New minor features:
+
 - Add discrete "start" functionality to ProcessRunner to manage when the external process begins
 - Add timeout (in seconds) argument to wait and collectLines methods
 - New Timeout exception
 
 Internal changes:
+
 - collectLines now leverages mapLines internally to build the output list in a shared queue to better interleave content from different pipes
 - Closing of stdin is now handled within _Commmand, not _PrPipeWriter
 - New QueueLink class to manage movement of records between queues
 - Refactored substantial functionality between _PrPipe and sub-classes
 - New methods in command.py
--- send_signal
--- is_queue_alive
--- is_queue_drained (based on similar changes to _PrPipe)
+    - send_signal
+    - is_queue_alive
+    - is_queue_drained (based on similar changes to _PrPipe)
 - Leverage Events objects to stop child processes
 
 Dependencies now include `funcsigs`.
