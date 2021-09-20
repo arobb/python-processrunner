@@ -19,7 +19,7 @@ example uses, and API docs.
    examples
    glossary
    changelog
-   internals
+   errata
 
 Introduction and Background
 ===========================
