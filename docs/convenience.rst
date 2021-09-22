@@ -8,7 +8,7 @@ RunCommand
 The RunCommand function returns the process exit code, and stdout and stderr
 are connected to local stdout and stderr.
 
-Accessed via `processrunner.RunCommand`.
+Accessed via `processrunner.runCommand`.
 
 .. currentmodule:: processrunner.runcommand
 .. autofunction:: runCommand
