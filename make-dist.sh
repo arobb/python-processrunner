@@ -6,4 +6,4 @@ rm -rf "$DIR/src/processrunner.egg-info"
 python setup.py sdist
 
 # Sign the distribution
-gpg --detach-sign -a "$DIR/dist/*.tar.gz"
+gpg --detach-sign -a "$DIR"/dist/*.tar.gz
