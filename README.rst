@@ -1,3 +1,6 @@
+.. _Documentation: https://processrunner.readthedocs.io/en/latest/
+.. _Convenience Functions: https://processrunner.readthedocs.io/en/latest/convenience.html
+
 Python ProcessRunner
 ====================
 
@@ -12,11 +15,16 @@ Designed to make reading from external processes easier. While targeted for
 use cases like processing log output, it also allows multiple writers to
 send text to the stdin of external processes.
 
-Output can be sent to multiple locations. E.g. the stdout and stderr of anexternal process can be written to one or multiple files, AND also to the pipes of the local process.
+Output can be sent to multiple locations. E.g. the stdout and stderr of an
+external process can be written to one or multiple files, AND also to the
+pipes of the local process.
 
-Several convenience functions simplify common use cases. All the classes and functions take the command to execute in the subprocess.Popen/.call format, a list of strings starting with the command name, followed by any arguments for that command.
+Several convenience functions simplify common use cases. All the classes and
+functions take the command to execute in the subprocess.Popen/.call format,
+a list of strings starting with the command name, followed by any arguments
+for that command.
 
-See https://processrunner.readthedocs.io/en/latest/ for the full documentation.
+See the full `documentation`_ for complete details.
 
 
 Chain commands together
@@ -48,46 +56,15 @@ ProcessRunner
 
 Convenience functions
 ==============================
-runCommand
-  The runCommand function returns the process exit code, and stdout and stderr are connected to local stdout and stderr.
-
-  *Parameters*
-    - **command** REQUIRED ``[string,]`` The command to execute along with all parameters.
-    - **outputPrefix** OPTIONAL ``string`` String to prepend to all output lines. Defaults to 'ProcessRunner> '.
-
-  *Properties*
-    - Blocking: Returns once the external command exits.
-
-ssh
-  The ssh function runs a command on a remote host, and returns the SSH exit code. stdout and stderr are connected to local stdout and stderr.
-
-  *Parameters*
-    - **remoteAddress** REQUIRED ``string`` IP or hostname for target system.
-    - **remotecommand** REQUIRED ``string`` The command to run on the target system.
-    - **outputPrefix** OPTIONAL ``string`` String to prepend to all output lines. Defaults to 'ssh> '.
-
-  *Properties*
-    - Blocking: Returns once the external command exits.
-
-writeOut
-  The writeOut function is used to prepend lines from the external process with a given string. Given a pipe and a string, it returns a function that accepts a line of text, then writes that line to the provided pipe, prepended with a user provided string. Useful when handling output from processes directly. See example use below.
-
-  *Parameters*
-    - **pipe** REQUIRED ``pipe`` A system pipe to write the output to.
-    - **outputPrefix** REQUIRED ``string`` A string to prepend to each line.
-      - This can also be any object that can be cast to a string.
-
-  *Properties*
-    - Return type is a function.
-
-getActiveProcesses
-  The getActiveProcesses function returns a list of ``ProcessRunner`` instances that are currently alive.
-
-  *Takes no parameters*
-
+A number of convenience functions are available to quickly run a
+:ref:`command` with common options, run a command via SSH, and other
+activities. These are referenced on the Convenience Functions documentation
+page: `Convenience Functions`_.
 
 Examples
 ==============
+A larger set of examples is available on the Examples page in the
+documentation.
 
 Simple
 ------

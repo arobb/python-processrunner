@@ -16,6 +16,7 @@ example uses, and API docs.
    :caption: Contents
 
    api
+   convenience
    examples
    glossary
    changelog
