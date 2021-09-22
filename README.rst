@@ -56,10 +56,10 @@ ProcessRunner
 
 Convenience functions
 ==============================
-A number of convenience functions are available to quickly run a
-:ref:`command` with common options, run a command via SSH, and other
-activities. These are referenced on the Convenience Functions documentation
-page: `Convenience Functions`_.
+A number of convenience functions are available to quickly run a command
+with common options, run a command via SSH, and other activities. These are
+referenced on the Convenience Functions documentation page: `Convenience
+Functions`_.
 
 Examples
 ==============
