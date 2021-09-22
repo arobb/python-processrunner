@@ -2,7 +2,7 @@ Change Log
 ==========
 Documented changes to the project.
 
-Version 2.7.0+ (TODOs)
+Version 3.0.0+ (TODOs)
 ----------------------
 - Internal ContentWrapper class manage value changes across ContentWrapper.THRESHOLD
     - If the values grow or shink, ContentWrapper should adapt its management
@@ -29,6 +29,8 @@ Major changes:
 - Added validations using pylint, pytest coverage, and bandit
 - Moved code under ``src`` directory
 - :meth:`wait` behavior change: Now waits for all consumers to finish reading
+    - May increase run time or potentially cause apps to hang that have
+      unfinished readers
 - :meth:`start` now returns ``self`` rather than ``True``
 - NEW :meth:`map` method mirrors :meth:`mapLines` and will eventually
   replace it.

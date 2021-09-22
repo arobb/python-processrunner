@@ -307,6 +307,70 @@ results:
         # Start the command and wait for everything to finish
         proc.start().wait()
 
+
+Using WriteOut to concurrently map output to the console and files
+------------------------------------------------------------------
+.. note::
+
+    This example uses a script from the ProcessRunner source tree to generate
+    output on both stdout and stderr.
+
+While an external command runs, write the external process' ``stdout`` and
+``stderr`` to the corresponding local pipes, as well as corresponding files.
+Further, prefix the local pipe output with dedicated notes, and prefix the
+file output with timestamps.
+
+.. code-block:: python
+
+    # Imports
+    import os
+    import sys
+    from datetime import datetime
+    from processrunner import ProcessRunner, WriteOut
+
+    if __name__ == "__main__":
+        # Logging files
+        working_dir = os.path.dirname(os.path.realpath(__file__))
+        stdoutFile = open(working_dir+'/stdout.txt', 'a')
+        stderrFile = open(working_dir+'/stderr.txt', 'a')
+
+        # Date/time notation for output lines in files
+        class DateNote:
+            def init(self):
+                pass
+            def __repr__(self):
+                return datetime.now().isoformat() + " "
+
+        # Prep the process
+        command = ["tests/test-output-script.py",
+                   "--lines", "5",
+                   "--out-pipe", "both"]
+        proc = ProcessRunner(command, autostart=False)
+
+        # Attach output mechanisms to the process's output pipes. These are
+        # handled asynchronously, so you can see the output while it is happening
+        # Write to the console's stdout and stderr, with custom prefixes for each
+        proc.mapLines(WriteOut(pipe=sys.stdout,
+                               outputPrefix="validation-stdout> "),
+                      procPipeName="stdout")
+        proc.mapLines(WriteOut(pipe=sys.stderr,
+                               outputPrefix="validation-stderr> "),
+                      procPipeName="stderr")
+
+        # Write to the log files, prepending each line with a date/time stamp
+        proc.mapLines(WriteOut(pipe=stdoutFile, outputPrefix=DateNote()),
+                      procPipeName="stdout")
+        proc.mapLines(WriteOut(pipe=stderrFile, outputPrefix=DateNote()),
+                      procPipeName="stderr")
+
+        # Start the process, then block regular execution until the
+        # process finishes
+        proc.start().wait()
+
+        stdoutFile.close()
+        stderrFile.close()
+
+
 Viewing log output
 ------------------
 .. code-block:: python
